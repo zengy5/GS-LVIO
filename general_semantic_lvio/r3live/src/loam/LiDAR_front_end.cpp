@@ -12,6 +12,7 @@ typedef pcl::PointXYZINormal PointType;
 
 ros::Publisher pub_full, pub_surf, pub_corn;
 
+// 枚举类别,MID=0,HORIZON=1,以此类推
 enum LID_TYPE
 {
     MID,
@@ -20,6 +21,7 @@ enum LID_TYPE
     OUST64
 };
 
+// 同上
 enum Feature
 {
     Nor,
@@ -91,9 +93,11 @@ bool   edge_jump_judge( const pcl::PointCloud< PointType > &pl, vector< orgtype 
 
 int main( int argc, char **argv )
 {
+    // 初始化ROS节点
     ros::init( argc, argv, "feature_extract" );
     ros::NodeHandle n;
 
+    // 初始化ROS参数
     n.param< int >( "Lidar_front_end/lidar_type", lidar_type, 0 );
     n.param< double >( "Lidar_front_end/blind", blind, 0.1 );
     n.param< double >( "Lidar_front_end/inf_bound", inf_bound, 4 );
@@ -123,6 +127,7 @@ int main( int argc, char **argv )
 
     ros::Subscriber sub_points;
 
+    // 根据不同的雷达来选择处理函数
     switch ( lidar_type )
     {
     case MID:
@@ -131,7 +136,7 @@ int main( int argc, char **argv )
         break;
 
     case HORIZON:
-        printf( "HORIZON\n" );
+        printf( "HORIZON\n" );  // HAP和MID360都选择这个
         sub_points = n.subscribe( "/livox/lidar", 1000, horizon_handler, ros::TransportHints().tcpNoDelay() );
         break;
 
@@ -151,6 +156,7 @@ int main( int argc, char **argv )
         break;
     }
 
+    // 发布角点,平面点等等topic的publisher,以便后续IMU处理(不是说点到面吗)
     pub_full = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud", 100 );
     pub_surf = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_flat", 100 );
     pub_corn = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_sharp", 100 );
@@ -160,7 +166,7 @@ int main( int argc, char **argv )
 }
 
 double vx, vy, vz;
-void   mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
+void mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
     pcl::PointCloud< PointType > pl;
     pcl::fromROSMsg( *msg, pl );
@@ -193,7 +199,7 @@ void   mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 
 void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
 {
-    double                                 t1 = omp_get_wtime();
+    // double                                 t1 = omp_get_wtime();
     vector< pcl::PointCloud< PointType > > pl_buff( N_SCANS );
     vector< vector< orgtype > >            typess( N_SCANS );
     pcl::PointCloud< PointType >           pl_full, pl_corn, pl_surf;
@@ -209,6 +215,7 @@ void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
         pl_buff[ i ].reserve( plsize );
     }
     // ANCHOR - remove nearing pts.
+    // 和loam livox里选好点滤坏点的流程一样
     for ( uint i = 1; i < plsize; i++ )
     {
         // clang-format off
@@ -216,7 +223,7 @@ void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
             && ( !IS_VALID( msg->points[ i ].x ) ) 
             && ( !IS_VALID( msg->points[ i ].y ) ) 
             && ( !IS_VALID( msg->points[ i ].z ) )
-            // && msg->points[ i ].x > 0.7 
+            // && msg->points[ i ].x > 0.7  // 注释以允许MID360使用
         )
         {
             // https://github.com/Livox-SDK/Livox-SDK/wiki/Livox-SDK-Communication-Protocol

@@ -92,10 +92,10 @@ std::string data_dump_dir = std::string("/mnt/0B3B134F0B3B134F/color_temp_r3live
 int main(int argc, char **argv)
 {
     printf_program("R3LIVE: A Robust, Real-time, RGB-colored, LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package");
-    Common_tools::printf_software_version();
-    Eigen::initParallel();
-    ros::init(argc, argv, "R3LIVE_main");
-    R3LIVE * fast_lio_instance = new R3LIVE();
+    Common_tools::printf_software_version();    // 看一下你的电脑配置
+    Eigen::initParallel();                      // Eigen多线程初始化
+    ros::init(argc, argv, "R3LIVE_main");       
+    R3LIVE * fast_lio_instance = new R3LIVE();  // !重点  创建了一个R3LIVE对象,所有操作都在这里面
     ros::Rate rate(5000);
     bool status = ros::ok();
     ros::spin();
