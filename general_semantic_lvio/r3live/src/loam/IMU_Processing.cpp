@@ -474,12 +474,15 @@ void ImuProcess::Process( const MeasureGroup &meas, StatesGroup &stat, PointClou
     {
         if ( 1 )
         {
+            // 运动补偿
             lic_point_cloud_undistort( meas, stat, *cur_pcl_un_ );
         }
         else
         {
+            // 或者不做任何处理
             *cur_pcl_un_ = *meas.lidar;
         }
+        // 前向传播,计算协方差矩阵
         lic_state_propagate( meas, stat );
     }
     // t2 = omp_get_wtime();

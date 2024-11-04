@@ -602,6 +602,7 @@ int R3LIVE::service_LIO_update()
 #endif
             lasermap_fov_segment();
             downSizeFilterSurf.setInputCloud( feats_undistort );
+            // !降采样在这里,可以注释掉
             downSizeFilterSurf.filter( *feats_down );
             // cout <<"Preprocess cost time: " << tim.toc("Preprocess") << endl;
             /*** initialize the map kdtree ***/
