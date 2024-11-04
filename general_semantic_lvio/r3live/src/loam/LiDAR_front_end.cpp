@@ -77,6 +77,7 @@ double jump_up_limit, jump_down_limit;
 double cos160;
 double edgea, edgeb;
 double smallp_intersect, smallp_ratio;
+string lidar_topic;
 int    point_filter_num;
 int    g_if_using_raw_point = 1;
 int    g_LiDAR_sampling_point_step = 3;
@@ -119,6 +120,8 @@ int main( int argc, char **argv )
     n.param< int >( "Lidar_front_end/point_filter_num", point_filter_num, 1 );
     n.param< int >( "Lidar_front_end/point_step", g_LiDAR_sampling_point_step, 3 );
     n.param< int >( "Lidar_front_end/using_raw_point", g_if_using_raw_point, 1 );
+    n.param< string > ( "Lidar_front_end/lid_topic", lidar_topic, "/livox/lidar");
+    std::cout << lidar_topic << std::endl;
 
     jump_up_limit = cos( jump_up_limit / 180 * M_PI );
     jump_down_limit = cos( jump_down_limit / 180 * M_PI );
@@ -132,12 +135,12 @@ int main( int argc, char **argv )
     {
     case MID:
         printf( "MID40\n" );
-        sub_points = n.subscribe( "/livox/lidar", 1000, mid_handler, ros::TransportHints().tcpNoDelay() );
+        sub_points = n.subscribe( lidar_topic, 1000, mid_handler, ros::TransportHints().tcpNoDelay() );
         break;
 
     case HORIZON:
         printf( "HORIZON\n" );  // HAP和MID360都选择这个
-        sub_points = n.subscribe( "/livox/lidar", 1000, horizon_handler, ros::TransportHints().tcpNoDelay() );
+        sub_points = n.subscribe( lidar_topic, 1000, horizon_handler, ros::TransportHints().tcpNoDelay() );
         break;
 
     case VELO16:

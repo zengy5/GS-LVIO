@@ -49,6 +49,8 @@ Dr. Fu Zhang < fuzhang@hku.hk >.
 
 void R3LIVE::imu_cbk( const sensor_msgs::Imu::ConstPtr &msg_in )
 {
+    // 往队列里面push消息,不做预积分,就单纯的push
+    // 不用改
     sensor_msgs::Imu::Ptr msg( new sensor_msgs::Imu( *msg_in ) );
     double                timestamp = msg->header.stamp.toSec();
     g_camera_lidar_queue.imu_in( timestamp );
