@@ -148,6 +148,7 @@ public:
 
     int laserCloudValidNum = 0;
     int laserCloudSelNum = 0;
+    int multi_lid = 0;
 
     // std::vector<double> T1, T2, s_plot, s_plot2, s_plot3, s_plot4, s_plot5, s_plot6;
     double T1[MAXN], T2[MAXN], s_plot[MAXN], s_plot2[MAXN], s_plot3[MAXN], s_plot4[MAXN], s_plot5[MAXN], s_plot6[MAXN];
@@ -162,6 +163,7 @@ public:
     // Buffers for measurements
     double cube_len = 0.0;
     double lidar_end_time = 0.0;
+    double lidar_end_time2 = 0.0;
     double last_timestamp_lidar = -1;
     double last_timestamp_imu = -1;
     double HALF_FOV_COS = 0.0;
@@ -173,6 +175,7 @@ public:
     double kdtree_incremental_time, kdtree_search_time;
 
     std::deque<sensor_msgs::PointCloud2::ConstPtr> lidar_buffer;
+    std::deque<sensor_msgs::PointCloud2::ConstPtr> lidar_buffer2;
     std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_lio;
     std::deque<sensor_msgs::Imu::ConstPtr> imu_buffer_vio;
 
@@ -202,7 +205,7 @@ public:
     ros::Publisher pubLaserCloudMap;
     ros::Publisher pubOdomAftMapped;
     ros::Publisher pubPath;
-    ros::Subscriber sub_pcl;
+    ros::Subscriber sub_pcl, sub_pcl2;
     ros::Subscriber sub_imu;
     ros::Subscriber sub_img, sub_img_comp;
 
@@ -346,6 +349,7 @@ public:
 
         sub_imu = m_ros_node_handle.subscribe(IMU_topic.c_str(), 2000000, &R3LIVE::imu_cbk, this, ros::TransportHints().tcpNoDelay());
         sub_pcl = m_ros_node_handle.subscribe(LiDAR_pointcloud_topic.c_str(), 2000000, &R3LIVE::feat_points_cbk, this, ros::TransportHints().tcpNoDelay());
+        sub_pcl2 = m_ros_node_handle.subscribe("/laser_cloud_flat2", 2000000, &R3LIVE::feat_points_cbk2, this, ros::TransportHints().tcpNoDelay());
         sub_img = m_ros_node_handle.subscribe(IMAGE_topic.c_str(), 1000000, &R3LIVE::image_callback, this, ros::TransportHints().tcpNoDelay());
         sub_img_comp = m_ros_node_handle.subscribe(IMAGE_topic_compressed.c_str(), 1000000, &R3LIVE::image_comp_callback, this, ros::TransportHints().tcpNoDelay());
 
@@ -372,6 +376,7 @@ public:
             get_ros_parameter( m_ros_node_handle, "r3live_common/estimate_i2c_extrinsic", m_if_estimate_i2c_extrinsic, 0 );
             get_ros_parameter( m_ros_node_handle, "r3live_common/estimate_intrinsic", m_if_estimate_intrinsic, 0 );
             get_ros_parameter( m_ros_node_handle, "r3live_common/maximum_vio_tracked_pts", m_maximum_vio_tracked_pts, 600 );
+            // get_ros_parameter( m_ros_node_handle, "Lidar_front_end/multi_lid", multi_lid, 0 );
         }
         if ( 1 )
         {
@@ -442,6 +447,7 @@ public:
     bool if_corner_in_FOV(Eigen::Vector3f cube_p);
     void lasermap_fov_segment();
     void feat_points_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in);
+    void feat_points_cbk2(const sensor_msgs::PointCloud2::ConstPtr &msg_in);
     void wait_render_thread_finish();
     bool get_pointcloud_data_from_ros_message(sensor_msgs::PointCloud2::ConstPtr & msg, pcl::PointCloud<pcl::PointXYZINormal> & pcl_pc);
     int service_LIO_update();

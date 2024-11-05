@@ -152,50 +152,107 @@ bool R3LIVE::get_pointcloud_data_from_ros_message( sensor_msgs::PointCloud2::Con
 
 bool R3LIVE::sync_packages( MeasureGroup &meas )
 {
-    if ( lidar_buffer.empty() || imu_buffer_lio.empty() )
+    if(this->multi_lid)
     {
-        return false;
-    }
-
-    /*** push lidar frame ***/
-    if ( !lidar_pushed )
-    {
-        meas.lidar.reset( new PointCloudXYZINormal() );
-        if ( get_pointcloud_data_from_ros_message( lidar_buffer.front(), *( meas.lidar ) ) == false )
+        if ( lidar_buffer.empty() || lidar_buffer2.empty()|| imu_buffer_lio.empty() )
         {
             return false;
         }
-        // pcl::fromROSMsg(*(lidar_buffer.front()), *(meas.lidar));
-        meas.lidar_beg_time = lidar_buffer.front()->header.stamp.toSec();
-        lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double( 1000 );
-        meas.lidar_end_time = lidar_end_time;
-        // printf("Input LiDAR time = %.3f, %.3f\n", meas.lidar_beg_time, meas.lidar_end_time);
-        // printf_line_mem_MB;
-        lidar_pushed = true;
-    }
 
-    if ( last_timestamp_imu < lidar_end_time )
+        /*** push lidar frame ***/
+        if ( !lidar_pushed )
+        {
+            meas.lidar.reset( new PointCloudXYZINormal() );
+            meas.lidar2.reset( new PointCloudXYZINormal() );
+            if ( get_pointcloud_data_from_ros_message( lidar_buffer.front(), *( meas.lidar ) ) == false 
+                ||get_pointcloud_data_from_ros_message( lidar_buffer2.front(), *( meas.lidar2 ) ) == false)
+            {
+                return false;
+            }
+            // pcl::fromROSMsg(*(lidar_buffer.front()), *(meas.lidar));
+            meas.lidar_beg_time = lidar_buffer.front()->header.stamp.toSec();
+            meas.lidar_beg_time2 = lidar_buffer2.front()->header.stamp.toSec();
+            lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double( 1000 );
+            lidar_end_time2 = meas.lidar_beg_time2 + meas.lidar2->points.back().curvature / double( 1000 );
+            meas.lidar_end_time = lidar_end_time;
+            meas.lidar_end_time2 = lidar_end_time2;
+            // printf("Input LiDAR time = %.3f, %.3f\n", meas.lidar_beg_time, meas.lidar_end_time);
+            // printf_line_mem_MB;
+            lidar_pushed = true;
+        }
+
+        if ( last_timestamp_imu < lidar_end_time || last_timestamp_imu < lidar_end_time2)
+        {
+            return false;
+        }
+
+        /*** push imu data, and pop from imu buffer ***/
+        double imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+        meas.imu.clear();
+        while ( ( !imu_buffer_lio.empty() ) && ( imu_time < lidar_end_time ) )
+        {
+            imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+            if ( imu_time > lidar_end_time + 0.02 && imu_time > lidar_end_time2 + 0.02 )
+                break;
+            meas.imu.push_back( imu_buffer_lio.front() );
+            imu_buffer_lio.pop_front();
+        }
+
+        lidar_buffer.pop_front();
+        lidar_buffer2.pop_front();
+        lidar_pushed = false;
+        // if (meas.imu.empty()) return false;
+        // std::cout<<"[IMU Sycned]: "<<imu_time<<" "<<lidar_end_time<<std::endl;
+        return true;        
+    }
+    else
     {
-        return false;
+        if ( lidar_buffer.empty() || imu_buffer_lio.empty() )
+        {
+            return false;
+        }
+
+        /*** push lidar frame ***/
+        if ( !lidar_pushed )
+        {
+            meas.lidar.reset( new PointCloudXYZINormal() );
+            if ( get_pointcloud_data_from_ros_message( lidar_buffer.front(), *( meas.lidar ) ) == false )
+            {
+                return false;
+            }
+            // pcl::fromROSMsg(*(lidar_buffer.front()), *(meas.lidar));
+            meas.lidar_beg_time = lidar_buffer.front()->header.stamp.toSec();
+            lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double( 1000 );
+            meas.lidar_end_time = lidar_end_time;
+            // printf("Input LiDAR time = %.3f, %.3f\n", meas.lidar_beg_time, meas.lidar_end_time);
+            // printf_line_mem_MB;
+            lidar_pushed = true;
+        }
+
+        if ( last_timestamp_imu < lidar_end_time )
+        {
+            return false;
+        }
+
+        /*** push imu data, and pop from imu buffer ***/
+        double imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+        meas.imu.clear();
+        while ( ( !imu_buffer_lio.empty() ) && ( imu_time < lidar_end_time ) )
+        {
+            imu_time = imu_buffer_lio.front()->header.stamp.toSec();
+            if ( imu_time > lidar_end_time + 0.02 )
+                break;
+            meas.imu.push_back( imu_buffer_lio.front() );
+            imu_buffer_lio.pop_front();
+        }
+
+        lidar_buffer.pop_front();
+        lidar_pushed = false;
+        // if (meas.imu.empty()) return false;
+        // std::cout<<"[IMU Sycned]: "<<imu_time<<" "<<lidar_end_time<<std::endl;
+        return true;
     }
 
-    /*** push imu data, and pop from imu buffer ***/
-    double imu_time = imu_buffer_lio.front()->header.stamp.toSec();
-    meas.imu.clear();
-    while ( ( !imu_buffer_lio.empty() ) && ( imu_time < lidar_end_time ) )
-    {
-        imu_time = imu_buffer_lio.front()->header.stamp.toSec();
-        if ( imu_time > lidar_end_time + 0.02 )
-            break;
-        meas.imu.push_back( imu_buffer_lio.front() );
-        imu_buffer_lio.pop_front();
-    }
-
-    lidar_buffer.pop_front();
-    lidar_pushed = false;
-    // if (meas.imu.empty()) return false;
-    // std::cout<<"[IMU Sycned]: "<<imu_time<<" "<<lidar_end_time<<std::endl;
-    return true;
 }
 
 // project lidar frame to world
@@ -482,7 +539,28 @@ void R3LIVE::feat_points_cbk( const sensor_msgs::PointCloud2::ConstPtr &msg_in )
     mtx_buffer.unlock();
     sig_buffer.notify_all();
 }
-
+void R3LIVE::feat_points_cbk2( const sensor_msgs::PointCloud2::ConstPtr &msg_in )
+{
+    std::cout << "In!" << std::endl;
+    sensor_msgs::PointCloud2::Ptr msg( new sensor_msgs::PointCloud2( *msg_in ) );
+    msg->header.stamp = ros::Time( msg_in->header.stamp.toSec() - m_lidar_imu_time_delay );
+    if ( g_camera_lidar_queue.lidar_in( msg_in->header.stamp.toSec() + 0.1 ) == 0 )
+    {
+        return;
+    }
+    mtx_buffer.lock();
+    // std::cout<<"got feature"<<std::endl;
+    if ( msg->header.stamp.toSec() < last_timestamp_lidar )
+    {
+        ROS_ERROR( "lidar loop back, clear buffer" );
+        lidar_buffer2.clear();
+    }
+    // ROS_INFO("get point cloud at time: %.6f", msg->header.stamp.toSec());
+    lidar_buffer2.push_back( msg );
+    last_timestamp_lidar = msg->header.stamp.toSec();
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
+}
 void R3LIVE::wait_render_thread_finish()
 {
     if ( m_render_thread != nullptr )

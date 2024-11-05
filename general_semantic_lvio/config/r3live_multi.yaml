@@ -1,9 +1,18 @@
 Lidar_front_end:
+   multi_lid: 1 # 1 represent two lidars
    lid_topic: "/livox/lidar_192_168_1_3"
-   lidar_type: 2   # 1 for Livox-avia, 3 for Ouster-OS1-64
+   lid_topic2: "/livox/lidar_192_168_1_100"
+   lidar_type: 2   # 1 for Livox-avia, 2 for vlp, 3 for Ouster-OS1-64
+   lidar_type2: 2
    N_SCANS: 4
    using_raw_point: 1
    point_step: 1
+   LiDAR2_rotate_to_LIDAR1_Extrinsic:
+      [0.938514, 0.000000,  -0.345241,
+       0.000000, 1.000000,  0.0000000,
+       0.345241, 0.000000,  0.938514] 
+   LiDAR2_offset_to_LIDAR1_Extrinsic:
+      [0.016537, -0.03939, -0.23079] 
    
 r3live_common:
    if_dump_log: 0                   # If recording ESIKF update log. [default = 0]
@@ -24,16 +33,11 @@ r3live_vio:
       0.0,    605.545,  236.741,
       0.0, 0.0, 1.0 ] 
    camera_dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]  #k1, k2, p1, p2, k3
-   # Fine extrinsic value. form camera-LiDAR calibration.
-   # camera_ext_R:
-   #     [0, 0, 1,
-   #      -1, 0, 0,
-   #      0, -1, 0] 
+   # Fine extrinsic value. Camera-to-LiDAR1.
    camera_ext_R:
        [0.        ,  0.34524104,  0.93851412,
         -1.        , -0.        , -0.        ,
         -0.        , -0.93851412,  0.34524104] 
-   # camera_ext_t: [0.106522, 0.0534783, 0.0904348] 
    camera_ext_t: [0.08528735, 0.0304036, -0.04362076] 
    
 r3live_lio:        

@@ -1,5 +1,6 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/common/transforms.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include "../tools/tools_logger.hpp"
@@ -10,7 +11,7 @@ using namespace std;
 
 typedef pcl::PointXYZINormal PointType;
 
-ros::Publisher pub_full, pub_surf, pub_corn;
+ros::Publisher pub_full, pub_surf, pub_surf2, pub_corn;
 
 // 枚举类别,MID=0,HORIZON=1,以此类推
 enum LID_TYPE
@@ -70,6 +71,7 @@ int    lidar_type;
 double blind, inf_bound;
 int    N_SCANS;
 int    group_size;
+int    multi_lid;
 double disA, disB;
 double limit_maxmid, limit_midmin, limit_maxmin;
 double p2l_ratio;
@@ -81,9 +83,17 @@ string lidar_topic;
 int    point_filter_num;
 int    g_if_using_raw_point = 1;
 int    g_LiDAR_sampling_point_step = 3;
+Eigen::Matrix3d LiDAR2_rotate_to_LIDAR1_Extrinsic(Eigen::Matrix3d::Identity());
+Eigen::Vector3d LiDAR2_offset_to_LIDAR1_Extrinsic(0,0,0);
+Eigen::Matrix4d LiDAR2_to_LIDAR1_Extrinsic(Eigen::Matrix4d::Identity());
+vector<double> extrinT(3, 0.0);
+vector<double> extrinR(9, 0.0);
 void   mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg );
 void   horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg );
 void   velo16_handler( const sensor_msgs::PointCloud2::ConstPtr &msg );
+void   mid_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg );
+void   horizon_handler2( const livox_ros_driver::CustomMsg::ConstPtr &msg );
+void   velo16_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg );
 void   oust64_handler( const sensor_msgs::PointCloud2::ConstPtr &msg );
 void   give_feature( pcl::PointCloud< PointType > &pl, vector< orgtype > &types, pcl::PointCloud< PointType > &pl_corn,
                      pcl::PointCloud< PointType > &pl_surf );
@@ -121,7 +131,10 @@ int main( int argc, char **argv )
     n.param< int >( "Lidar_front_end/point_step", g_LiDAR_sampling_point_step, 3 );
     n.param< int >( "Lidar_front_end/using_raw_point", g_if_using_raw_point, 1 );
     n.param< string > ( "Lidar_front_end/lid_topic", lidar_topic, "/livox/lidar");
-    std::cout << lidar_topic << std::endl;
+    n.param< int >( "Lidar_front_end/multi_lid", multi_lid, 0);
+
+    std::cout << "Current LiDAR topic is" << lidar_topic << std::endl;
+
 
     jump_up_limit = cos( jump_up_limit / 180 * M_PI );
     jump_down_limit = cos( jump_down_limit / 180 * M_PI );
@@ -159,9 +172,63 @@ int main( int argc, char **argv )
         break;
     }
 
+    ros::Subscriber sub_points2;
+    int lidar_type2;
+    string lidar_topic2;
+    if(multi_lid)
+    {
+        std::cout << "MULTI LIDAR MODE ACCESS" << std::endl;
+        n.param< int >( "Lidar_front_end/lidar_type2", lidar_type2, 0 );
+        n.param< string > ( "Lidar_front_end/lid_topic2", lidar_topic2, "/livox/lidar");
+        n.param<vector<double>>("Lidar_front_end/LiDAR2_rotate_to_LIDAR1_Extrinsic", extrinR, vector<double>());
+        n.param<vector<double>>("Lidar_front_end/LiDAR2_offset_to_LIDAR1_Extrinsic", extrinT, vector<double>());
+
+        if(extrinR.size() != 9 || extrinT.size() != 3) 
+            throw std::invalid_argument("R should have 9 elements and t should have 3 elements.");
+        LiDAR2_rotate_to_LIDAR1_Extrinsic << extrinR[0], extrinR[1], extrinR[2],
+                                            extrinR[3], extrinR[4], extrinR[5],
+                                            extrinR[6], extrinR[7], extrinR[8];
+        LiDAR2_offset_to_LIDAR1_Extrinsic = Eigen::Vector3d(extrinT[0], extrinT[1], extrinT[2]);
+        LiDAR2_to_LIDAR1_Extrinsic.block<3,3>(0,0) = LiDAR2_rotate_to_LIDAR1_Extrinsic;
+        LiDAR2_to_LIDAR1_Extrinsic.block<3,1>(0,3) = LiDAR2_offset_to_LIDAR1_Extrinsic;
+
+
+        std::cout << "Second LiDAR topic is" << lidar_topic2 << std::endl;
+        std::cout << "LiDAR2_to_LIDAR1_Extrinsic is:\n";
+        std::cout << "Rotate Matrix:\n" << LiDAR2_rotate_to_LIDAR1_Extrinsic << std::endl;
+        std::cout << "Translate Vector:\n" << 
+            LiDAR2_offset_to_LIDAR1_Extrinsic[0] << " " <<
+            LiDAR2_offset_to_LIDAR1_Extrinsic[1] << " " << 
+            LiDAR2_offset_to_LIDAR1_Extrinsic[2] << " " << std::endl;
+        
+
+        // std::cout << "Extrinsic Matrix:\n" << LiDAR2_to_LIDAR1_Extrinsic << std::endl;
+        switch (lidar_type2)
+        {
+        case MID:
+            printf( "MID40\n" );
+            sub_points2 = n.subscribe( lidar_topic2, 1000, mid_handler2, ros::TransportHints().tcpNoDelay() );
+            break;
+        case HORIZON:
+            printf( "HORIZON\n" );  // HAP和MID360都选择这个
+            sub_points2 = n.subscribe( lidar_topic2, 1000, horizon_handler2, ros::TransportHints().tcpNoDelay() );
+            break;
+        case VELO16:
+            printf( "VELO16\n" );
+            sub_points2 = n.subscribe( lidar_topic2, 1000, velo16_handler2, ros::TransportHints().tcpNoDelay() );
+            break;     
+
+        default:
+            printf( "Lidar type is wrong.\n" );
+            exit( 0 );
+            break;
+        }
+    } 
     // 发布角点,平面点等等topic的publisher,以便后续IMU处理(不是说点到面吗)
+    // 发布这么多,实际上只用了一个flat,所以其他的理论上可以不发布
     pub_full = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud", 100 );
     pub_surf = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_flat", 100 );
+    pub_surf2 = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_flat2", 100 );
     pub_corn = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_sharp", 100 );
 
     ros::spin();
@@ -198,6 +265,37 @@ void mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
     pub_func( pl, pub_full, msg->header.stamp );
     pub_func( pl_surf, pub_surf, msg->header.stamp );
     pub_func( pl_corn, pub_corn, msg->header.stamp );
+}
+
+void mid_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg )
+{
+    pcl::PointCloud< PointType > pl;
+    pcl::fromROSMsg( *msg, pl );
+
+    pcl::PointCloud< PointType > pl_corn, pl_surf;
+    vector< orgtype >            types;
+    uint                         plsize = pl.size() - 1;
+    pl_corn.reserve( plsize );
+    pl_surf.reserve( plsize );
+    types.resize( plsize + 1 );
+
+    for ( uint i = 0; i < plsize; i++ )
+    {
+        types[ i ].range = pl[ i ].x;
+        vx = pl[ i ].x - pl[ i + 1 ].x;
+        vy = pl[ i ].y - pl[ i + 1 ].y;
+        vz = pl[ i ].z - pl[ i + 1 ].z;
+        types[ i ].dista = vx * vx + vy * vy + vz * vz;
+    }
+    // plsize++;
+    types[ plsize ].range = sqrt( pl[ plsize ].x * pl[ plsize ].x + pl[ plsize ].y * pl[ plsize ].y );
+
+    give_feature( pl, types, pl_corn, pl_surf );
+
+    ros::Time ct( ros::Time::now() );
+    // pub_func( pl, pub_full, msg->header.stamp );
+    pub_func( pl_surf, pub_surf2, msg->header.stamp );
+    // pub_func( pl_corn, pub_corn, msg->header.stamp );
 }
 
 void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
@@ -294,6 +392,100 @@ void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
     pub_func( pl_surf, pub_surf, msg->header.stamp );
     pub_func( pl_corn, pub_corn, msg->header.stamp );
 }
+void horizon_handler2( const livox_ros_driver::CustomMsg::ConstPtr &msg )
+{
+    // double                                 t1 = omp_get_wtime();
+    vector< pcl::PointCloud< PointType > > pl_buff( N_SCANS );
+    vector< vector< orgtype > >            typess( N_SCANS );
+    pcl::PointCloud< PointType >           pl_full, pl_corn, pl_surf;
+
+    uint plsize = msg->point_num;
+
+    pl_corn.reserve( plsize );
+    pl_surf.reserve( plsize );
+    pl_full.resize( plsize );
+
+    for ( int i = 0; i < N_SCANS; i++ )
+    {
+        pl_buff[ i ].reserve( plsize );
+    }
+    // ANCHOR - remove nearing pts.
+    // 和loam livox里选好点滤坏点的流程一样
+    for ( uint i = 1; i < plsize; i++ )
+    {
+        // clang-format off
+        if ( ( msg->points[ i ].line < N_SCANS ) 
+            && ( !IS_VALID( msg->points[ i ].x ) ) 
+            && ( !IS_VALID( msg->points[ i ].y ) ) 
+            && ( !IS_VALID( msg->points[ i ].z ) )
+            // && msg->points[ i ].x > 0.7  // 注释以允许MID360使用
+        )
+        {
+            // https://github.com/Livox-SDK/Livox-SDK/wiki/Livox-SDK-Communication-Protocol
+            // See [3.4 Tag Information] 
+            if ( ( msg->points[ i ].x > 2.0 )
+                && ( ( ( msg->points[ i ].tag & 0x03 ) != 0x00 )  ||  ( ( msg->points[ i ].tag & 0x0C ) != 0x00 ) )
+                )
+            {
+                // Remove the bad quality points
+                continue;
+            }
+        // clang-format on
+            pl_full[ i ].x = msg->points[ i ].x;
+            pl_full[ i ].y = msg->points[ i ].y;
+            pl_full[ i ].z = msg->points[ i ].z;
+            pl_full[ i ].intensity = msg->points[ i ].reflectivity;
+
+            pl_full[ i ].curvature = msg->points[ i ].offset_time / float( 1000000 ); // use curvature as time of each laser points
+
+            if ( ( std::abs( pl_full[ i ].x - pl_full[ i - 1 ].x ) > 1e-7 ) || ( std::abs( pl_full[ i ].y - pl_full[ i - 1 ].y ) > 1e-7 ) ||
+                 ( std::abs( pl_full[ i ].z - pl_full[ i - 1 ].z ) > 1e-7 ) )
+            {
+                pl_buff[ msg->points[ i ].line ].push_back( pl_full[ i ] );
+            }
+        }
+    }
+    if ( pl_buff.size() != N_SCANS )
+    {
+        return;
+    }
+    if ( pl_buff[ 0 ].size() <= 7 )
+    {
+        return;
+    }
+    for ( int j = 0; j < N_SCANS; j++ )
+    {
+        pcl::PointCloud< PointType > &pl = pl_buff[ j ];
+        vector< orgtype > &           types = typess[ j ];
+        plsize = pl.size();
+        if ( plsize < 7 )
+        {
+            continue;
+        }
+        types.resize( plsize );
+        plsize--;
+        for ( uint pt_idx = 0; pt_idx < plsize; pt_idx++ )
+        {
+            types[ pt_idx ].range = pl[ pt_idx ].x * pl[ pt_idx ].x + pl[ pt_idx ].y * pl[ pt_idx ].y;
+            vx = pl[ pt_idx ].x - pl[ pt_idx + 1 ].x;
+            vy = pl[ pt_idx ].y - pl[ pt_idx + 1 ].y;
+            vz = pl[ pt_idx ].z - pl[ pt_idx + 1 ].z;
+            // std::cout<<vx<<" "<<vx<<" "<<vz<<" "<<std::endl;
+        }
+        // plsize++;
+        types[ plsize ].range = pl[ plsize ].x * pl[ plsize ].x + pl[ plsize ].y * pl[ plsize ].y;
+        give_feature( pl, types, pl_corn, pl_surf );
+    }
+    if ( pl_surf.points.size() < 100 )
+    {
+        return;
+    }
+    ros::Time ct;
+    ct.fromNSec( msg->timebase );
+    // pub_func( pl_full, pub_full, msg->header.stamp );
+    pub_func( pl_surf, pub_surf2, msg->header.stamp );
+    // pub_func( pl_corn, pub_corn, msg->header.stamp );
+}
 
 int orders[ 16 ] = { 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15 };
 
@@ -301,9 +493,19 @@ void velo16_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
     pcl::PointCloud< PointType > pl_processed;
     pcl::fromROSMsg( *msg, pl_processed );
-    pub_func( pl_processed, pub_full, msg->header.stamp );
+    // pub_func( pl_processed, pub_full, msg->header.stamp );
     pub_func( pl_processed, pub_surf, msg->header.stamp );
-    pub_func( pl_processed, pub_corn, msg->header.stamp );
+    // pub_func( pl_processed, pub_corn, msg->header.stamp );
+}
+
+void velo16_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg )
+{
+    pcl::PointCloud< PointType > pl_processed;
+    pcl::fromROSMsg( *msg, pl_processed );
+    pcl::transformPointCloud(pl_processed, pl_processed, LiDAR2_to_LIDAR1_Extrinsic);
+    // pub_func( pl_processed, pub_full, msg->header.stamp );
+    pub_func( pl_processed, pub_surf2, msg->header.stamp );
+    // pub_func( pl_processed, pub_corn, msg->header.stamp );
 }
 
 void velo16_handler1( const sensor_msgs::PointCloud2::ConstPtr &msg )
