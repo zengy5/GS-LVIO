@@ -349,6 +349,7 @@ public:
 
         sub_imu = m_ros_node_handle.subscribe(IMU_topic.c_str(), 2000000, &R3LIVE::imu_cbk, this, ros::TransportHints().tcpNoDelay());
         sub_pcl = m_ros_node_handle.subscribe(LiDAR_pointcloud_topic.c_str(), 2000000, &R3LIVE::feat_points_cbk, this, ros::TransportHints().tcpNoDelay());
+        // 在这里加了第二个点云的回调函数订阅,不过只会订阅,目前还不进行处理
         sub_pcl2 = m_ros_node_handle.subscribe("/laser_cloud_flat2", 2000000, &R3LIVE::feat_points_cbk2, this, ros::TransportHints().tcpNoDelay());
         sub_img = m_ros_node_handle.subscribe(IMAGE_topic.c_str(), 1000000, &R3LIVE::image_callback, this, ros::TransportHints().tcpNoDelay());
         sub_img_comp = m_ros_node_handle.subscribe(IMAGE_topic_compressed.c_str(), 1000000, &R3LIVE::image_comp_callback, this, ros::TransportHints().tcpNoDelay());

@@ -3,6 +3,8 @@
 #include <pcl/common/transforms.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <livox_ros_driver/CustomMsg.h>
+#include <mutex>
+#include <thread>
 #include "../tools/tools_logger.hpp"
 
 using namespace std;
@@ -65,6 +67,13 @@ struct orgtype
     }
 };
 
+struct PubNode
+{
+    PubNode(pcl::PointCloud< PointType > pl_, ros::Time time_) : pl(pl_), time(time_) {}
+    pcl::PointCloud< PointType > pl;
+    ros::Time time;
+};
+
 const double rad2deg = 180 * M_1_PI;
 
 int    lidar_type;
@@ -88,6 +97,11 @@ Eigen::Vector3d LiDAR2_offset_to_LIDAR1_Extrinsic(0,0,0);
 Eigen::Matrix4d LiDAR2_to_LIDAR1_Extrinsic(Eigen::Matrix4d::Identity());
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
+deque< PubNode > pub_que, pub_que2;
+mutex mtx_lidar, mtx_lidar2;
+
+
+void   process();
 void   mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg );
 void   horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg );
 void   velo16_handler( const sensor_msgs::PointCloud2::ConstPtr &msg );
@@ -231,8 +245,32 @@ int main( int argc, char **argv )
     pub_surf2 = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_flat2", 100 );
     pub_corn = n.advertise< sensor_msgs::PointCloud2 >( "/laser_cloud_sharp", 100 );
 
+    std::thread p(process);
     ros::spin();
+
     return 0;
+}
+
+void process()
+{
+    std::cout << "Starting Publish !" << std::endl;
+    while (ros::ok())
+    {
+        mtx_lidar.lock();
+        mtx_lidar2.lock();
+        if(!pub_que.empty() && !pub_que2.empty() )
+        {
+            auto ele = pub_que.front();
+            auto ele2 = pub_que2.front();
+            pub_que.pop_front();
+            pub_que2.pop_front();
+            pcl::PointCloud<PointType> all_pl;
+            all_pl = ele.pl + ele2.pl;
+            pub_func(all_pl, pub_surf, ele.time);
+        }
+        mtx_lidar.unlock();
+        mtx_lidar2.unlock();
+    }
 }
 
 double vx, vy, vz;
@@ -263,7 +301,10 @@ void mid_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 
     ros::Time ct( ros::Time::now() );
     pub_func( pl, pub_full, msg->header.stamp );
-    pub_func( pl_surf, pub_surf, msg->header.stamp );
+    mtx_lidar.lock();
+    pub_que.push_back(PubNode(pl_surf, msg->header.stamp));
+    mtx_lidar.unlock();
+    // pub_func( pl_surf, pub_surf, msg->header.stamp );
     pub_func( pl_corn, pub_corn, msg->header.stamp );
 }
 
@@ -294,7 +335,10 @@ void mid_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg )
 
     ros::Time ct( ros::Time::now() );
     // pub_func( pl, pub_full, msg->header.stamp );
-    pub_func( pl_surf, pub_surf2, msg->header.stamp );
+    mtx_lidar2.lock();
+    pub_que2.push_back(PubNode(pl_surf, msg->header.stamp));
+    mtx_lidar2.unlock();
+    // pub_func( pl_surf, pub_surf2, msg->header.stamp );
     // pub_func( pl_corn, pub_corn, msg->header.stamp );
 }
 
@@ -494,8 +538,12 @@ void velo16_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
     pcl::PointCloud< PointType > pl_processed;
     pcl::fromROSMsg( *msg, pl_processed );
     // pub_func( pl_processed, pub_full, msg->header.stamp );
-    pub_func( pl_processed, pub_surf, msg->header.stamp );
+    // pub_func( pl_processed, pub_surf, msg->header.stamp );
     // pub_func( pl_processed, pub_corn, msg->header.stamp );
+    mtx_lidar.lock();
+    pub_que.push_back(PubNode(pl_processed, msg->header.stamp));
+    mtx_lidar.unlock();
+    
 }
 
 void velo16_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg )
@@ -504,8 +552,11 @@ void velo16_handler2( const sensor_msgs::PointCloud2::ConstPtr &msg )
     pcl::fromROSMsg( *msg, pl_processed );
     pcl::transformPointCloud(pl_processed, pl_processed, LiDAR2_to_LIDAR1_Extrinsic);
     // pub_func( pl_processed, pub_full, msg->header.stamp );
-    pub_func( pl_processed, pub_surf2, msg->header.stamp );
+    // pub_func( pl_processed, pub_surf2, msg->header.stamp );
     // pub_func( pl_processed, pub_corn, msg->header.stamp );
+    mtx_lidar2.lock();
+    pub_que2.push_back(PubNode(pl_processed, msg->header.stamp));
+    mtx_lidar2.unlock();
 }
 
 void velo16_handler1( const sensor_msgs::PointCloud2::ConstPtr &msg )
