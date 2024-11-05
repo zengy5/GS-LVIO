@@ -19,6 +19,7 @@
 #include "tools_ros.hpp"
 #include <queue>
 #include <deque>
+#include <vector>
 #include "lib_sophus/se3.hpp"
 #include "lib_sophus/so3.hpp"
 // #define DEBUG_PRINT
@@ -58,6 +59,7 @@ static const Eigen::Matrix3f Eye3f(Eigen::Matrix3f::Identity());
 static const Eigen::Vector3d Zero3d(0, 0, 0);
 static const Eigen::Vector3f Zero3f(0, 0, 0);
 // Eigen::Vector3d Lidar_offset_to_IMU(0.05512, 0.02226, 0.0297); // Horizon
+static const Eigen::Matrix3d Lidar_rotate_to_IMU(Eigen::Matrix3d::Identity());  // 尝试的外参
 static const Eigen::Vector3d Lidar_offset_to_IMU(0.04165, 0.02326, -0.0284); // Avia
 
 struct Pose6D
@@ -307,6 +309,18 @@ struct MeasureGroup // Lidar data and imu dates for the curent process
     std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
 
+struct MultiMeasureGroup // 多激光+单IMU的结构体,用于后续多激光的融合
+{
+    MultiMeasureGroup()
+    {
+        this->lidar.reset(new PointCloudXYZINormal());
+        this->lidar2.reset(new PointCloudXYZINormal());
+    };
+    double lidar_beg_time, lidar_beg_time2;
+    double lidar_end_time, lidar_end_time2;
+    PointCloudXYZINormal::Ptr lidar, lidar2;
+    std::deque<sensor_msgs::Imu::ConstPtr> imu;
+};
 struct StatesGroup
 {
 

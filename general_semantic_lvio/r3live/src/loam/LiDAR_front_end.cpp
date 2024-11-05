@@ -145,7 +145,7 @@ int main( int argc, char **argv )
 
     case VELO16:
         printf( "VELO16\n" );
-        sub_points = n.subscribe( "/velodyne_points", 1000, velo16_handler, ros::TransportHints().tcpNoDelay() );
+        sub_points = n.subscribe( lidar_topic, 1000, velo16_handler, ros::TransportHints().tcpNoDelay() );
         break;
 
     case OUST64:
@@ -299,7 +299,11 @@ int orders[ 16 ] = { 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15 };
 
 void velo16_handler( const sensor_msgs::PointCloud2::ConstPtr &msg )
 {
-    // TODO
+    pcl::PointCloud< PointType > pl_processed;
+    pcl::fromROSMsg( *msg, pl_processed );
+    pub_func( pl_processed, pub_full, msg->header.stamp );
+    pub_func( pl_processed, pub_surf, msg->header.stamp );
+    pub_func( pl_processed, pub_corn, msg->header.stamp );
 }
 
 void velo16_handler1( const sensor_msgs::PointCloud2::ConstPtr &msg )

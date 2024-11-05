@@ -413,6 +413,7 @@ void ImuProcess::lic_point_cloud_undistort( const MeasureGroup &meas, const Stat
              * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is represented in global frame */
             Eigen::Matrix3d R_i( R_imu * Exp( angvel_avr, dt ) );
             Eigen::Vector3d T_ei( pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt + R_i * Lidar_offset_to_IMU - pos_liD_e );
+            std::cout << T_ei << std::endl;
 
             Eigen::Vector3d P_i( it_pcl->x, it_pcl->y, it_pcl->z );
             Eigen::Vector3d P_compensate = state_inout.rot_end.transpose() * ( R_i * P_i + T_ei );
