@@ -1131,6 +1131,9 @@ void R3LIVE::service_VIO_update()
         img_pose->set_frame_idx( g_camera_frame_idx );
         tim.tic( "Frame" );
 
+        // 单个图像的追踪,在上色时变成三个图像就可以了
+        // 地图管理应该不需要更改
+        // 用第一帧图像作为参考帧,这里不用改
         if ( g_camera_frame_idx == 0 )
         {
             std::vector< cv::Point2f >                pts_2d_vec;
@@ -1163,6 +1166,8 @@ void R3LIVE::service_VIO_update()
         tim.tic( "Track_img" );
         StatesGroup state_out;
         m_cam_measurement_weight = std::max( 0.001, std::min( 5.0 / m_number_of_new_visited_voxel, 0.01 ) );
+
+        // IMU预积分处理
         if ( vio_preintegration( g_lio_state, state_out, img_pose->m_timestamp + g_lio_state.td_ext_i2c ) == false )
         {
             m_mutex_lio_process.unlock();
@@ -1183,11 +1188,16 @@ void R3LIVE::service_VIO_update()
         }
         g_cost_time_logger.record( tim, "Ransac" );
         tim.tic( "Vio_f2f" );
+
+        // 这里是协方差更新的开始,也就是update部分,但是frame to frame
+        // 这里就可以考虑怎么将三个图片的范围用进来了
         bool res_esikf = true, res_photometric = true;
         wait_render_thread_finish();
         res_esikf = vio_esikf( state_out, op_track );
         g_cost_time_logger.record( tim, "Vio_f2f" );
         tim.tic( "Vio_f2m" );
+
+        // 这里开始是frame to map,引入颜色的地方
         res_photometric = vio_photometric( state_out, op_track, img_pose );
         g_cost_time_logger.record( tim, "Vio_f2m" );
         g_lio_state = state_out;
