@@ -256,20 +256,35 @@ void process()
     std::cout << "Starting Publish !" << std::endl;
     while (ros::ok())
     {
-        mtx_lidar.lock();
-        mtx_lidar2.lock();
-        if(!pub_que.empty() && !pub_que2.empty() )
+        if(multi_lid)
         {
-            auto ele = pub_que.front();
-            auto ele2 = pub_que2.front();
-            pub_que.pop_front();
-            pub_que2.pop_front();
-            pcl::PointCloud<PointType> all_pl;
-            all_pl = ele.pl + ele2.pl;
-            pub_func(all_pl, pub_surf, ele.time);
+            mtx_lidar.lock();
+            mtx_lidar2.lock();
+            if(!pub_que.empty() && !pub_que2.empty() )
+            {
+                auto ele = pub_que.front();
+                auto ele2 = pub_que2.front();
+                pub_que.pop_front();
+                pub_que2.pop_front();
+                pcl::PointCloud<PointType> all_pl;
+                all_pl = ele.pl + ele2.pl;
+                pub_func(all_pl, pub_surf, ele.time);
+            }
+            mtx_lidar.unlock();
+            mtx_lidar2.unlock();
         }
-        mtx_lidar.unlock();
-        mtx_lidar2.unlock();
+        else
+        {
+            mtx_lidar.lock();
+            if(!pub_que.empty() )
+            {
+                auto ele = pub_que.front();
+                pub_que.pop_front();
+                pub_func(ele.pl, pub_surf, ele.time);
+            }
+            mtx_lidar.unlock();
+        }
+
     }
 }
 
@@ -432,9 +447,12 @@ void horizon_handler( const livox_ros_driver::CustomMsg::ConstPtr &msg )
     }
     ros::Time ct;
     ct.fromNSec( msg->timebase );
-    pub_func( pl_full, pub_full, msg->header.stamp );
-    pub_func( pl_surf, pub_surf, msg->header.stamp );
-    pub_func( pl_corn, pub_corn, msg->header.stamp );
+    // pub_func( pl_full, pub_full, msg->header.stamp );
+    // pub_func( pl_surf, pub_surf, msg->header.stamp );
+    // pub_func( pl_corn, pub_corn, msg->header.stamp );
+    mtx_lidar.lock();
+    pub_que.push_back(PubNode(pl_surf, msg->header.stamp));
+    mtx_lidar.unlock();    
 }
 void horizon_handler2( const livox_ros_driver::CustomMsg::ConstPtr &msg )
 {
@@ -527,8 +545,11 @@ void horizon_handler2( const livox_ros_driver::CustomMsg::ConstPtr &msg )
     ros::Time ct;
     ct.fromNSec( msg->timebase );
     // pub_func( pl_full, pub_full, msg->header.stamp );
-    pub_func( pl_surf, pub_surf2, msg->header.stamp );
+    // pub_func( pl_surf, pub_surf2, msg->header.stamp );
     // pub_func( pl_corn, pub_corn, msg->header.stamp );
+    mtx_lidar2.lock();
+    pub_que2.push_back(PubNode(pl_surf, msg->header.stamp));
+    mtx_lidar2.unlock();
 }
 
 int orders[ 16 ] = { 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15 };

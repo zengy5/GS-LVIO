@@ -338,6 +338,11 @@ void R3LIVE::image_comp_callback( const sensor_msgs::CompressedImageConstPtr &ms
     return;
 }
 
+void R3LIVE::image_comp_callback2( const sensor_msgs::CompressedImageConstPtr &msg )
+{
+    // 目前还用不到,只是复制在这里
+}
+
 // ANCHOR - image_callback
 void R3LIVE::image_callback( const sensor_msgs::ImageConstPtr &msg )
 {
@@ -358,9 +363,99 @@ void R3LIVE::image_callback( const sensor_msgs::ImageConstPtr &msg )
     process_image( temp_img, msg->header.stamp.toSec() );
 }
 
+void R3LIVE::image_callback2( const sensor_msgs::ImageConstPtr &msg )
+{
+    std::unique_lock< std::mutex > lock( mutex_image_callback );
+    // 第二个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
+    // if ( sub_image_typed == 2 )
+    // {
+    //     return; // Avoid subscribe the same image twice.
+    // }
+    // sub_image_typed = 1;
+
+    // if ( g_flag_if_first_rec_img )
+    // {
+    //     g_flag_if_first_rec_img = 0;
+    //     m_thread_pool_ptr->commit_task( &R3LIVE::service_process_img_buffer, this );
+    // }
+
+    cv::Mat temp_img = cv_bridge::toCvCopy( msg, sensor_msgs::image_encodings::BGR8 )->image.clone();
+    process_image2( temp_img, msg->header.stamp.toSec() );
+}
+
 double last_accept_time = 0;
 int    buffer_max_frame = 0;
 int    total_frame_count = 0;
+void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
+{
+    cv::Mat img_get;
+    if ( temp_img.rows == 0 )
+    {
+        cout << "Process image error, image rows =0 " << endl;
+        return;
+    }
+
+    if ( msg_time < last_accept_time )
+    {
+        cout << "Error, image time revert!!" << endl;
+        return;
+    }
+
+    if ( ( msg_time - last_accept_time ) < ( 1.0 / m_control_image_freq ) * 0.9 )
+    {
+        return;
+    }
+    // // last_accept_time = msg_time;
+
+    // if ( m_camera_start_ros_tim < 0 )
+    // {
+    //     // 新的图像被用image_pose2来表示
+    //     // 一切操作都在这个上面做
+    //     // 
+    //     m_camera_start_ros_tim = msg_time;
+    //     m_vio_scale_factor = m_vio_image_width * m_image_downsample_ratio / temp_img.cols; // 320 * 24
+    //     // load_vio_parameters();
+    //     set_initial_camera_parameter( g_lio_state, m_camera_intrinsic.data(), m_camera_dist_coeffs.data(), m_camera_ext_R.data(),
+    //                                   m_camera_ext_t.data(), m_vio_scale_factor );
+    //     cv::eigen2cv( g_cam_K, intrinsic );
+    //     cv::eigen2cv( g_cam_dist, dist_coeffs );
+    //     initUndistortRectifyMap( intrinsic, dist_coeffs, cv::Mat(), intrinsic, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ),
+    //                              CV_16SC2, m_ud_map1, m_ud_map2 );
+    //     m_mvs_recorder.init( g_cam_K, m_vio_image_width / m_vio_scale_factor, &m_map_rgb_pts );
+    //     m_mvs_recorder.set_working_dir( m_map_output_dir );
+    // }
+
+    // if ( m_image_downsample_ratio != 1.0 )
+    // {
+    //     cv::resize( temp_img, img_get, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ) );
+    // }
+    // else
+    // {
+    //     img_get = temp_img; // clone ?
+    // }
+    // std::shared_ptr< Image_frame > img_pose = std::make_shared< Image_frame >( g_cam2_K );
+    // if ( m_if_pub_raw_img )
+    // {
+    //     img_pose->m_raw_img = img_get;
+    // }
+    // cv::remap( img_get, img_pose->m_img, m_ud_map1, m_ud_map2, cv::INTER_LINEAR );
+    // // cv::imshow("sub Img", img_pose->m_img);
+    // img_pose->m_timestamp = msg_time;
+    // img_pose->init_cubic_interpolation();
+    // img_pose->image_equalize();
+    // m_camera_data_mutex2.lock();
+    // m_queue_image_with_pose2.push_back( img_pose );
+    // m_camera_data_mutex2.unlock();
+    // total_frame_count++;
+
+    // if ( m_queue_image_with_pose2.size() > buffer_max_frame )
+    // {
+    //     buffer_max_frame = m_queue_image_with_pose2.size();
+    // }     
+    
+}
+
+
 void   R3LIVE::process_image( cv::Mat &temp_img, double msg_time )
 {
     cv::Mat img_get;
@@ -441,6 +536,18 @@ void R3LIVE::load_vio_parameters()
     m_ros_node_handle.getParam( "r3live_vio/camera_ext_R", camera_ext_R_data );
     m_ros_node_handle.getParam( "r3live_vio/camera_ext_t", camera_ext_t_data );
 
+    int multi_camera_state = 0;
+    std::vector< double > camera2_intrinsic_data, camera2_dist_coeffs_data, camera2_ext_R_data, camera2_ext_t_data;
+    m_ros_node_handle.getParam( "r3live_vio/multi_camera_state", multi_camera_state );
+    if(multi_camera_state)
+    {
+        std::cout << "Multi Cameras Applied!" << std::endl;
+        m_ros_node_handle.getParam( "r3live_vio/camera2_intrinsic", camera2_intrinsic_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera2_dist_coeffs", camera2_dist_coeffs_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera2_ext_R", camera2_ext_R_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera2_ext_t", camera2_ext_t_data );     
+    }
+
     CV_Assert( ( m_vio_image_width != 0 && m_vio_image_heigh != 0 ) );
 
     if ( ( camera_intrinsic_data.size() != 9 ) || ( camera_dist_coeffs_data.size() != 5 ) || ( camera_ext_R_data.size() != 9 ) ||
@@ -465,6 +572,20 @@ void R3LIVE::load_vio_parameters()
     cout << "[Ros_parameter]: r3live_vio/Camera extrinsic R: " << endl;
     cout << m_camera_ext_R << endl;
     cout << "[Ros_parameter]: r3live_vio/Camera extrinsic T: " << m_camera_ext_t.transpose() << endl;
+
+    if(multi_camera_state)
+    {
+        m_camera2_intrinsic = Eigen::Map< Eigen::Matrix< double, 3, 3, Eigen::RowMajor > >( camera2_intrinsic_data.data() );
+        m_camera2_dist_coeffs = Eigen::Map< Eigen::Matrix< double, 5, 1 > >( camera2_dist_coeffs_data.data() );
+        m_camera2_ext_R = Eigen::Map< Eigen::Matrix< double, 3, 3, Eigen::RowMajor > >( camera2_ext_R_data.data() );
+        m_camera2_ext_t = Eigen::Map< Eigen::Matrix< double, 3, 1 > >( camera2_ext_t_data.data() );
+        cout << "[Ros_parameter]: r3live_vio/Camera2 Intrinsic: " << endl;
+        cout << m_camera2_intrinsic << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera2 distcoeff: " << m_camera2_dist_coeffs.transpose() << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera2 extrinsic R: " << endl;
+        cout << m_camera2_ext_R << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera2 extrinsic T: " << m_camera2_ext_t.transpose() << endl;       
+    }
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 }
 

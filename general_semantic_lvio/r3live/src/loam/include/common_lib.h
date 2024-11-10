@@ -303,25 +303,14 @@ struct MeasureGroup // Lidar data and imu dates for the curent process
     {
         this->lidar.reset(new PointCloudXYZINormal());
         this->lidar2.reset(new PointCloudXYZINormal());
+        this->lidar3.reset(new PointCloudXYZINormal());
     };
-    double lidar_beg_time, lidar_beg_time2;
-    double lidar_end_time, lidar_end_time2;
-    PointCloudXYZINormal::Ptr lidar, lidar2;
+    double lidar_beg_time, lidar_beg_time2, lidar_beg_time3;
+    double lidar_end_time, lidar_end_time2, lidar_end_time3;
+    PointCloudXYZINormal::Ptr lidar, lidar2, lidar3;
     std::deque<sensor_msgs::Imu::ConstPtr> imu;
 };
 
-struct MultiMeasureGroup // 多激光+单IMU的结构体,用于后续多激光的融合
-{
-    MultiMeasureGroup()
-    {
-        this->lidar.reset(new PointCloudXYZINormal());
-        this->lidar2.reset(new PointCloudXYZINormal());
-    };
-    double lidar_beg_time, lidar_beg_time2;
-    double lidar_end_time, lidar_end_time2;
-    PointCloudXYZINormal::Ptr lidar, lidar2;
-    std::deque<sensor_msgs::Imu::ConstPtr> imu;
-};
 struct StatesGroup
 {
 

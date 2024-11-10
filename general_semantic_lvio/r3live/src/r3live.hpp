@@ -208,6 +208,7 @@ public:
     ros::Subscriber sub_pcl, sub_pcl2;
     ros::Subscriber sub_imu;
     ros::Subscriber sub_img, sub_img_comp;
+    ros::Subscriber sub_img2, sub_img_comp2;
 
     ros::Publisher pub_track_img, pub_raw_img;
     ros::Publisher pub_odom_cam, pub_path_cam;
@@ -232,12 +233,13 @@ public:
     ros::Publisher m_pub_visual_tracked_3d_pts;
     ros::Publisher m_pub_render_rgb_pts;
     std::vector< std::shared_ptr <ros::Publisher> > m_pub_rgb_render_pointcloud_ptr_vec;
-    std::mutex m_camera_data_mutex;
+    std::mutex m_camera_data_mutex, m_camera_data_mutex2;
     double m_camera_start_ros_tim = -3e8;
     std::deque<sensor_msgs::ImageConstPtr> m_queue_image_msg;
     std::deque<std::shared_ptr<Image_frame>> m_queue_image_with_pose;
+    std::deque<std::shared_ptr<Image_frame>> m_queue_image_with_pose2;
     std::list<std::shared_ptr<Image_frame>> g_image_vec;
-    Eigen::Matrix3d g_cam_K;
+    Eigen::Matrix3d g_cam_K, g_cam2_K;
     Eigen::Matrix<double, 5, 1> g_cam_dist;
     double m_vio_scale_factor = 1.0;
     cv::Mat m_ud_map1, m_ud_map2;
@@ -274,6 +276,10 @@ public:
     Eigen::Matrix<double, 5, 1> m_camera_dist_coeffs;
     Eigen::Matrix<double, 3, 3, Eigen::RowMajor> m_camera_ext_R;
     Eigen::Matrix<double, 3, 1> m_camera_ext_t;
+    Eigen::Matrix<double, 3, 3, Eigen::RowMajor> m_camera2_intrinsic;
+    Eigen::Matrix<double, 5, 1> m_camera2_dist_coeffs;
+    Eigen::Matrix<double, 3, 3, Eigen::RowMajor> m_camera2_ext_R;
+    Eigen::Matrix<double, 3, 1> m_camera2_ext_t;
 
     double m_image_downsample_ratio = 1.0;
     nav_msgs::Path camera_path;
@@ -293,8 +299,11 @@ public:
                                           double * imu_camera_ext_t ,
                                           double cam_k_scale);
     void process_image(cv::Mat & image, double msg_time);
+    void process_image2(cv::Mat & image, double msg_time);
     void image_callback(const sensor_msgs::ImageConstPtr &msg);
+    void image_callback2(const sensor_msgs::ImageConstPtr &msg);
     void image_comp_callback(const sensor_msgs::CompressedImageConstPtr &msg);
+    void image_comp_callback2(const sensor_msgs::CompressedImageConstPtr &msg);
     void set_image_pose( std::shared_ptr<Image_frame> & image_pose, const StatesGroup & state );
     void publish_camera_odom(std::shared_ptr<Image_frame> & image, double msg_time);
     void publish_track_img(cv::Mat & img, double frame_cost_time);
@@ -329,12 +338,15 @@ public:
 
         pub_odom_cam = m_ros_node_handle.advertise<nav_msgs::Odometry>("/camera_odom", 10);
         pub_path_cam = m_ros_node_handle.advertise<nav_msgs::Path>("/camera_path", 10);
-        std::string LiDAR_pointcloud_topic, IMU_topic, IMAGE_topic, IMAGE_topic_compressed;
+        std::string LiDAR_pointcloud_topic, IMU_topic, IMAGE_topic, IMAGE_topic_compressed, IMAGE_topic2, IMAGE_topic2_compressed;
 
         get_ros_parameter<std::string>(m_ros_node_handle, "/LiDAR_pointcloud_topic", LiDAR_pointcloud_topic, std::string("/laser_cloud_flat") );
         get_ros_parameter<std::string>(m_ros_node_handle, "/IMU_topic", IMU_topic, std::string("/livox/imu") );
         get_ros_parameter<std::string>(m_ros_node_handle, "/Image_topic", IMAGE_topic, std::string("/camera/image_color") );
+        get_ros_parameter<std::string>(m_ros_node_handle, "/Image_topic2", IMAGE_topic2, std::string("/camera/image_color") );
+        std::cout << IMAGE_topic2 << std::endl;
         IMAGE_topic_compressed = std::string(IMAGE_topic).append("/compressed");
+        // IMAGE_topic2_compressed = std::string(IMAGE_topic2).append("/compressed");
         if(1)
         {
             scope_color(ANSI_COLOR_BLUE_BOLD);
@@ -353,6 +365,10 @@ public:
         sub_pcl2 = m_ros_node_handle.subscribe("/laser_cloud_flat2", 2000000, &R3LIVE::feat_points_cbk2, this, ros::TransportHints().tcpNoDelay());
         sub_img = m_ros_node_handle.subscribe(IMAGE_topic.c_str(), 1000000, &R3LIVE::image_callback, this, ros::TransportHints().tcpNoDelay());
         sub_img_comp = m_ros_node_handle.subscribe(IMAGE_topic_compressed.c_str(), 1000000, &R3LIVE::image_comp_callback, this, ros::TransportHints().tcpNoDelay());
+        // 第二个图像的订阅
+        sub_img2 = m_ros_node_handle.subscribe(IMAGE_topic2.c_str(), 1000000, &R3LIVE::image_callback2, this, ros::TransportHints().tcpNoDelay());
+        // sub_img_comp2 = m_ros_node_handle.subscribe(IMAGE_topic2_compressed.c_str(), 1000000, &R3LIVE::image_comp_callback2, this, ros::TransportHints().tcpNoDelay());
+
 
         m_ros_node_handle.getParam("/initial_pose", m_initial_pose);
         m_pub_rgb_render_pointcloud_ptr_vec.resize(1e3);
