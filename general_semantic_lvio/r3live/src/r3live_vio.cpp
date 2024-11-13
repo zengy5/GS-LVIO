@@ -257,6 +257,7 @@ void R3LIVE::publish_raw_img( cv::Mat &img )
 
 int        sub_image_typed = 0; // 0: TBD 1: sub_raw, 2: sub_comp
 std::mutex mutex_image_callback;
+std::mutex mutex_image2_callback;
 
 std::deque< sensor_msgs::CompressedImageConstPtr > g_received_compressed_img_msg;
 std::deque< sensor_msgs::ImageConstPtr >           g_received_img_msg;
@@ -365,20 +366,8 @@ void R3LIVE::image_callback( const sensor_msgs::ImageConstPtr &msg )
 
 void R3LIVE::image_callback2( const sensor_msgs::ImageConstPtr &msg )
 {
-    std::unique_lock< std::mutex > lock( mutex_image_callback );
-    // 第二个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
-    // if ( sub_image_typed == 2 )
-    // {
-    //     return; // Avoid subscribe the same image twice.
-    // }
-    // sub_image_typed = 1;
-
-    // if ( g_flag_if_first_rec_img )
-    // {
-    //     g_flag_if_first_rec_img = 0;
-    //     m_thread_pool_ptr->commit_task( &R3LIVE::service_process_img_buffer, this );
-    // }
-
+    // std::unique_lock< std::mutex > lock( mutex_image2_callback );
+    // // 第二个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
     cv::Mat temp_img = cv_bridge::toCvCopy( msg, sensor_msgs::image_encodings::BGR8 )->image.clone();
     process_image2( temp_img, msg->header.stamp.toSec() );
 }
@@ -386,6 +375,8 @@ void R3LIVE::image_callback2( const sensor_msgs::ImageConstPtr &msg )
 double last_accept_time = 0;
 int    buffer_max_frame = 0;
 int    total_frame_count = 0;
+int    buffer_max_frame2 = 0;
+int    total_frame_count2 = 0;
 void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
 {
     cv::Mat img_get;
@@ -406,52 +397,58 @@ void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
         return;
     }
     // // last_accept_time = msg_time;
+    
+    if ( m_camera2_start_ros_tim < 0 )
+    {
+        // 新的图像被用image_pose2来表示
+        // 一切操作都在这个上面做
+        // 也需要初始化,将内参什么的设置好
+        
+        m_camera2_start_ros_tim = msg_time;
+        m_vio_scale_factor = m_vio_image_width * m_image_downsample_ratio / temp_img.cols; // 320 * 24
+        // set_initial_camera_parameter( g_lio_state, m_camera_intrinsic.data(), m_camera_dist_coeffs.data(), m_camera_ext_R.data(),
+                                    //   m_camera_ext_t.data(), m_vio_scale_factor );
+        // 这个不能直接用
+        g_cam2_K << m_camera2_intrinsic.data()[ 0 ] / m_vio_scale_factor, m_camera2_intrinsic.data()[ 1 ],
+                    m_camera2_intrinsic.data()[ 2 ] / m_vio_scale_factor, m_camera2_intrinsic.data()[ 3 ],
+                    m_camera2_intrinsic.data()[ 4 ] / m_vio_scale_factor, m_camera2_intrinsic.data()[ 5 ] / m_vio_scale_factor, 
+                    m_camera2_intrinsic.data()[ 6 ], m_camera2_intrinsic.data()[ 7 ], m_camera2_intrinsic.data()[ 8 ];
+        g_cam2_dist = Eigen::Map< Eigen::Matrix< double, 5, 1 > >( m_camera2_dist_coeffs.data() );
+        cv::eigen2cv( g_cam2_K, intrinsic2 );
+        cv::eigen2cv( g_cam2_dist, dist_coeffs2 );
+        initUndistortRectifyMap( intrinsic2, dist_coeffs2, cv::Mat(), intrinsic2, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ),
+                                 CV_16SC2, m_ud2_map1, m_ud2_map2 );
+    }
+    
+    if ( m_image_downsample_ratio != 1.0 )
+    {
+        cv::resize( temp_img, img_get, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ) );
+    }
+    else
+    {
+        img_get = temp_img; // clone ?
+    }
 
-    // if ( m_camera_start_ros_tim < 0 )
-    // {
-    //     // 新的图像被用image_pose2来表示
-    //     // 一切操作都在这个上面做
-    //     // 
-    //     m_camera_start_ros_tim = msg_time;
-    //     m_vio_scale_factor = m_vio_image_width * m_image_downsample_ratio / temp_img.cols; // 320 * 24
-    //     // load_vio_parameters();
-    //     set_initial_camera_parameter( g_lio_state, m_camera_intrinsic.data(), m_camera_dist_coeffs.data(), m_camera_ext_R.data(),
-    //                                   m_camera_ext_t.data(), m_vio_scale_factor );
-    //     cv::eigen2cv( g_cam_K, intrinsic );
-    //     cv::eigen2cv( g_cam_dist, dist_coeffs );
-    //     initUndistortRectifyMap( intrinsic, dist_coeffs, cv::Mat(), intrinsic, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ),
-    //                              CV_16SC2, m_ud_map1, m_ud_map2 );
-    //     m_mvs_recorder.init( g_cam_K, m_vio_image_width / m_vio_scale_factor, &m_map_rgb_pts );
-    //     m_mvs_recorder.set_working_dir( m_map_output_dir );
-    // }
-
-    // if ( m_image_downsample_ratio != 1.0 )
-    // {
-    //     cv::resize( temp_img, img_get, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ) );
-    // }
-    // else
-    // {
-    //     img_get = temp_img; // clone ?
-    // }
-    // std::shared_ptr< Image_frame > img_pose = std::make_shared< Image_frame >( g_cam2_K );
-    // if ( m_if_pub_raw_img )
-    // {
-    //     img_pose->m_raw_img = img_get;
-    // }
-    // cv::remap( img_get, img_pose->m_img, m_ud_map1, m_ud_map2, cv::INTER_LINEAR );
-    // // cv::imshow("sub Img", img_pose->m_img);
-    // img_pose->m_timestamp = msg_time;
-    // img_pose->init_cubic_interpolation();
-    // img_pose->image_equalize();
-    // m_camera_data_mutex2.lock();
-    // m_queue_image_with_pose2.push_back( img_pose );
-    // m_camera_data_mutex2.unlock();
-    // total_frame_count++;
-
-    // if ( m_queue_image_with_pose2.size() > buffer_max_frame )
-    // {
-    //     buffer_max_frame = m_queue_image_with_pose2.size();
-    // }     
+    std::shared_ptr< Image_frame > img_pose = std::make_shared< Image_frame >( g_cam2_K );
+    if ( m_if_pub_raw_img )
+    {
+        img_pose->m_raw_img = img_get;
+    }
+    // cv::remap( img_get, img_pose->m_img, m_ud2_map1, m_ud2_map2, cv::INTER_LINEAR );
+    // cv::imshow("sub Img", img_pose->m_img);
+    img_pose->m_img = img_get;
+    img_pose->m_timestamp = msg_time;
+    img_pose->init_cubic_interpolation();
+    img_pose->image_equalize();
+    m_camera_data_mutex2.lock();
+    m_queue_image_with_pose2.push_back( img_pose );
+    m_camera_data_mutex2.unlock();
+    total_frame_count2++;
+    std::cout << m_queue_image_with_pose2.size() << std::endl;
+    if ( m_queue_image_with_pose2.size() > buffer_max_frame2 )
+    {
+        buffer_max_frame2 = m_queue_image_with_pose2.size();
+    }     
     
 }
 
@@ -536,7 +533,7 @@ void R3LIVE::load_vio_parameters()
     m_ros_node_handle.getParam( "r3live_vio/camera_ext_R", camera_ext_R_data );
     m_ros_node_handle.getParam( "r3live_vio/camera_ext_t", camera_ext_t_data );
 
-    int multi_camera_state = 0;
+    
     std::vector< double > camera2_intrinsic_data, camera2_dist_coeffs_data, camera2_ext_R_data, camera2_ext_t_data;
     m_ros_node_handle.getParam( "r3live_vio/multi_camera_state", multi_camera_state );
     if(multi_camera_state)
@@ -610,6 +607,26 @@ void R3LIVE::set_image_pose( std::shared_ptr< Image_frame > &image_pose, const S
     // image_pose->inverse_pose();
 }
 
+void R3LIVE::set_image_pose_with_extrnisic( std::shared_ptr< Image_frame > &image_pose, const StatesGroup &state)
+{
+    mat_3_3 rot_mat = state.rot_end;
+    vec_3   t_vec = state.pos_end;
+    Eigen::Matrix3d rot_i2c2 = m_camera2_ext_R;
+    Eigen::Vector3d pos_i2c2 = m_camera2_ext_t;
+    vec_3   pose_t = rot_mat * pos_i2c2 + t_vec;
+    mat_3_3 R_w2c = rot_mat * rot_i2c2;
+
+    image_pose->set_pose( eigen_q( R_w2c ), pose_t );
+    // image_pose->fx = state.cam_intrinsic( 0 );
+    // image_pose->fy = state.cam_intrinsic( 1 );
+    // image_pose->cx = state.cam_intrinsic( 2 );
+    // image_pose->cy = state.cam_intrinsic( 3 );
+
+    // image_pose->m_cam_K << image_pose->fx, 0, image_pose->cx, 0, image_pose->fy, image_pose->cy, 0, 0, 1;
+    // scope_color( ANSI_COLOR_CYAN_BOLD );
+    std::cout << "\nsecond image processed!" << std::endl;
+
+}
 void R3LIVE::publish_camera_odom( std::shared_ptr< Image_frame > &image, double msg_time )
 {
     eigen_q            odom_q = image->m_pose_w2c_q;
@@ -640,6 +657,38 @@ void R3LIVE::publish_camera_odom( std::shared_ptr< Image_frame > &image, double 
     camera_path.header.frame_id = "world";
     camera_path.poses.push_back( msg_pose );
     pub_path_cam.publish( camera_path );
+}
+
+void R3LIVE::publish_camera_odom2( std::shared_ptr< Image_frame > &image, double msg_time )
+{
+    eigen_q            odom_q = image->m_pose_w2c_q;
+    vec_3              odom_t = image->m_pose_w2c_t;
+    nav_msgs::Odometry camera_odom;
+    camera_odom.header.frame_id = "world";
+    camera_odom.child_frame_id = "/aft_mapped";
+    camera_odom.header.stamp = ros::Time::now(); // ros::Time().fromSec(last_timestamp_lidar);
+    camera_odom.pose.pose.orientation.x = odom_q.x();
+    camera_odom.pose.pose.orientation.y = odom_q.y();
+    camera_odom.pose.pose.orientation.z = odom_q.z();
+    camera_odom.pose.pose.orientation.w = odom_q.w();
+    camera_odom.pose.pose.position.x = odom_t( 0 );
+    camera_odom.pose.pose.position.y = odom_t( 1 );
+    camera_odom.pose.pose.position.z = odom_t( 2 );
+    pub_odom_cam2.publish( camera_odom );
+
+    geometry_msgs::PoseStamped msg_pose;
+    msg_pose.header.stamp = ros::Time().fromSec( msg_time );
+    msg_pose.header.frame_id = "world";
+    msg_pose.pose.orientation.x = odom_q.x();
+    msg_pose.pose.orientation.y = odom_q.y();
+    msg_pose.pose.orientation.z = odom_q.z();
+    msg_pose.pose.orientation.w = odom_q.w();
+    msg_pose.pose.position.x = odom_t( 0 );
+    msg_pose.pose.position.y = odom_t( 1 );
+    msg_pose.pose.position.z = odom_t( 2 );
+    camera_path2.header.frame_id = "world";
+    camera_path2.poses.push_back( msg_pose );
+    pub_path_cam2.publish( camera_path2 );
 }
 
 void R3LIVE::publish_track_pts( Rgbmap_tracker &tracker )
@@ -1216,6 +1265,7 @@ void R3LIVE::service_VIO_update()
     cv::imshow( "Control panel", generate_control_panel_img().clone() );
     Common_tools::Timer tim;
     cv::Mat             img_get;
+    bool second_img_available = false;
     while ( ros::ok() )
     {
         cv_keyboard_callback();
@@ -1234,6 +1284,8 @@ void R3LIVE::service_VIO_update()
             std::this_thread::yield();
             continue;
         }
+
+        
         m_camera_data_mutex.lock();
         while ( m_queue_image_with_pose.size() > m_maximum_image_buffer )
         {
@@ -1247,6 +1299,29 @@ void R3LIVE::service_VIO_update()
         double                             message_time = img_pose->m_timestamp;
         m_queue_image_with_pose.pop_front();
         m_camera_data_mutex.unlock();
+
+        std::shared_ptr< Image_frame > img_pose2;
+        bool img_2_is_available = false;
+        if(multi_camera_state && !m_queue_image_with_pose2.empty())
+        {
+            // std::cout << "Not Empty" << std::endl;
+            m_camera_data_mutex2.lock();
+            while ( m_queue_image_with_pose2.size() > m_maximum_image_buffer )
+            {
+                cout << ANSI_COLOR_BLUE_BOLD << "=== Pop image! current queue size = " << m_queue_image_with_pose2.size() << " ===" << ANSI_COLOR_RESET
+                    << endl;
+                // op_track.track_img( m_queue_image_with_pose2.front(), -20 );
+                m_queue_image_with_pose2.pop_front();
+            }
+            img_pose2 = m_queue_image_with_pose2.front();
+            img_2_is_available = true;
+            // double                             message_time = img_pose->m_timestamp;
+            m_queue_image_with_pose2.pop_front();
+            m_camera_data_mutex2.unlock();
+        }
+
+
+
         g_camera_lidar_queue.m_last_visual_time = img_pose->m_timestamp + g_lio_state.td_ext_i2c;
 
         img_pose->set_frame_idx( g_camera_frame_idx );
@@ -1324,6 +1399,8 @@ void R3LIVE::service_VIO_update()
         g_lio_state = state_out;
         print_dash_board();
         set_image_pose( img_pose, state_out );
+        if(multi_camera_state && img_2_is_available)
+            set_image_pose_with_extrnisic( img_pose2, state_out);
 
         if ( 1 )
         {
@@ -1374,6 +1451,8 @@ void R3LIVE::service_VIO_update()
         g_vio_frame_cost_time = display_cost_time;
         // publish_render_pts( m_pub_render_rgb_pts, m_map_rgb_pts );
         publish_camera_odom( img_pose, message_time );
+        if(multi_camera_state && img_2_is_available)
+            publish_camera_odom2( img_pose2, message_time );
         // publish_track_img( op_track.m_debug_track_img, display_cost_time );
         publish_track_img( img_pose->m_raw_img, display_cost_time );
 

@@ -6,7 +6,6 @@ Panels:
       Expanded:
         - /Global Options1
         - /Grid1
-        - /LIO1
         - /LIO1/PointCloud21
         - /LIO1/current_scan1
         - /LIO1/Path1
@@ -14,6 +13,8 @@ Panels:
         - /RGB_map1/PointCloud21
         - /RGB_map1/PointCloud22
         - /RGB_map1/PointCloud23
+        - /Path2
+        - /Path3
       Splitter Ratio: 0.4651159942150116
     Tree Height: 404
   - Class: rviz/Selection
@@ -284,7 +285,7 @@ Visualization Manager:
           Topic: /aft_mapped_to_init
           Unreliable: false
           Value: true
-      Enabled: true
+      Enabled: false
       Name: LIO
     - Angle Tolerance: 0.10000000149011612
       Class: rviz/Odometry
@@ -2135,6 +2136,52 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: false
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 115; 210; 22
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /camera_path2
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 252; 233; 79
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Billboards
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic: /camera_path
+      Unreliable: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -2161,25 +2208,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 45.86623001098633
+      Distance: 14.306645393371582
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 12.412535667419434
-        Y: -5.884850025177002
-        Z: -5.034491539001465
+        X: 13.041091918945312
+        Y: -3.1041011810302734
+        Z: -0.1881629228591919
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.1547967940568924
+      Pitch: -0.005203217267990112
       Target Frame: aft_mapped
       Value: Orbit (rviz)
-      Yaw: 2.2845659255981445
+      Yaw: 2.9295692443847656
     Saved:
       - Class: rviz/ThirdPersonFollower
         Distance: 2.466799259185791

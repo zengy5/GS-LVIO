@@ -212,6 +212,7 @@ public:
 
     ros::Publisher pub_track_img, pub_raw_img;
     ros::Publisher pub_odom_cam, pub_path_cam;
+    ros::Publisher pub_odom_cam2, pub_path_cam2;
     bool dense_map_en, flg_EKF_inited = 0, flg_map_initialized = 0, flg_EKF_converged = 0;
     int effect_feat_num = 0, frame_num = 0;
     double filter_size_corner_min, m_voxel_downsample_size_surf, filter_size_map_min, fov_deg, deltaT, deltaR, aver_time_consu = 0, frame_first_pt_time = 0;
@@ -235,14 +236,16 @@ public:
     std::vector< std::shared_ptr <ros::Publisher> > m_pub_rgb_render_pointcloud_ptr_vec;
     std::mutex m_camera_data_mutex, m_camera_data_mutex2;
     double m_camera_start_ros_tim = -3e8;
+    double m_camera2_start_ros_tim = -3e8;
     std::deque<sensor_msgs::ImageConstPtr> m_queue_image_msg;
     std::deque<std::shared_ptr<Image_frame>> m_queue_image_with_pose;
     std::deque<std::shared_ptr<Image_frame>> m_queue_image_with_pose2;
     std::list<std::shared_ptr<Image_frame>> g_image_vec;
     Eigen::Matrix3d g_cam_K, g_cam2_K;
-    Eigen::Matrix<double, 5, 1> g_cam_dist;
+    Eigen::Matrix<double, 5, 1> g_cam_dist, g_cam2_dist;
     double m_vio_scale_factor = 1.0;
     cv::Mat m_ud_map1, m_ud_map2;
+    cv::Mat m_ud2_map1, m_ud2_map2;
 
     int                          g_camera_frame_idx = 0;
     int                          g_LiDAR_frame_index = 0;
@@ -269,6 +272,7 @@ public:
     double m_tracker_maximum_depth = 200;
     int m_if_record_mvs = 0;
     cv::Mat intrinsic, dist_coeffs;
+    cv::Mat intrinsic2, dist_coeffs2;
 
     mat_3_3 m_inital_rot_ext_i2c;
     vec_3  m_inital_pos_ext_i2c;
@@ -283,12 +287,14 @@ public:
 
     double m_image_downsample_ratio = 1.0;
     nav_msgs::Path camera_path;
+    nav_msgs::Path camera_path2;
     double m_cam_measurement_weight =  1e-3;
     int m_if_pub_raw_img = 1;
     int esikf_iter_times = 2;
     std::vector<std::shared_ptr<RGB_pts>> m_last_added_rgb_pts_vec;
     std::string m_map_output_dir;
     std::shared_ptr<std::shared_future<void> > m_render_thread = nullptr;
+    int multi_camera_state = 0;
     
     // VIO subsystem related
     void load_vio_parameters();
@@ -305,7 +311,9 @@ public:
     void image_comp_callback(const sensor_msgs::CompressedImageConstPtr &msg);
     void image_comp_callback2(const sensor_msgs::CompressedImageConstPtr &msg);
     void set_image_pose( std::shared_ptr<Image_frame> & image_pose, const StatesGroup & state );
+    void set_image_pose_with_extrnisic( std::shared_ptr<Image_frame> & image_pose, const StatesGroup & state );
     void publish_camera_odom(std::shared_ptr<Image_frame> & image, double msg_time);
+    void publish_camera_odom2(std::shared_ptr<Image_frame> & image, double msg_time);
     void publish_track_img(cv::Mat & img, double frame_cost_time);
     void publish_raw_img(cv::Mat & img);
     void publish_track_pts( Rgbmap_tracker & tracker  );
@@ -338,6 +346,8 @@ public:
 
         pub_odom_cam = m_ros_node_handle.advertise<nav_msgs::Odometry>("/camera_odom", 10);
         pub_path_cam = m_ros_node_handle.advertise<nav_msgs::Path>("/camera_path", 10);
+        pub_odom_cam2 = m_ros_node_handle.advertise<nav_msgs::Odometry>("/camera_odom2", 10);
+        pub_path_cam2 = m_ros_node_handle.advertise<nav_msgs::Path>("/camera_path2", 10);
         std::string LiDAR_pointcloud_topic, IMU_topic, IMAGE_topic, IMAGE_topic_compressed, IMAGE_topic2, IMAGE_topic2_compressed;
 
         get_ros_parameter<std::string>(m_ros_node_handle, "/LiDAR_pointcloud_topic", LiDAR_pointcloud_topic, std::string("/laser_cloud_flat") );
