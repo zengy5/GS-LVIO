@@ -547,6 +547,7 @@ void horizon_handler2( const livox_ros_driver::CustomMsg::ConstPtr &msg )
     // pub_func( pl_full, pub_full, msg->header.stamp );
     // pub_func( pl_surf, pub_surf2, msg->header.stamp );
     // pub_func( pl_corn, pub_corn, msg->header.stamp );
+    pcl::transformPointCloud(pl_surf, pl_surf, LiDAR2_to_LIDAR1_Extrinsic);
     mtx_lidar2.lock();
     pub_que2.push_back(PubNode(pl_surf, msg->header.stamp));
     mtx_lidar2.unlock();
