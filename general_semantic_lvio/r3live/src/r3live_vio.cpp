@@ -1405,20 +1405,21 @@ void R3LIVE::service_VIO_update()
         if ( 1 )
         {
             tim.tic( "Render" );
-            // m_map_rgb_pts.render_pts_in_voxels(img_pose, m_last_added_rgb_pts_vec);
             if ( 1 ) // Using multiple threads for rendering
             {
                 m_map_rgb_pts.m_if_get_all_pts_in_boxes_using_mp = 0;
-                // m_map_rgb_pts.render_pts_in_voxels_mp(img_pose, &m_map_rgb_pts.m_rgb_pts_in_recent_visited_voxels,
-                // img_pose->m_timestamp);
-                m_render_thread = std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
-                    render_pts_in_voxels_mp, img_pose, &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp ) );
+
+                if(multi_camera_state && img_2_is_available)
+                    m_render_thread2 = std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
+                        render_pts_in_voxels_mp_multi, img_pose, img_pose2, 
+                            &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp,img_pose2->m_timestamp ) );
+                else if(!multi_camera_state) 
+                    m_render_thread = std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
+                        render_pts_in_voxels_mp, img_pose, &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp ) );
             }
             else
             {
                 m_map_rgb_pts.m_if_get_all_pts_in_boxes_using_mp = 0;
-                // m_map_rgb_pts.render_pts_in_voxels( img_pose, m_map_rgb_pts.m_rgb_pts_in_recent_visited_voxels,
-                // img_pose->m_timestamp );
             }
             m_map_rgb_pts.m_last_updated_frame_idx = img_pose->m_frame_idx;
             g_cost_time_logger.record( tim, "Render" );
@@ -1426,8 +1427,8 @@ void R3LIVE::service_VIO_update()
             tim.tic( "Mvs_record" );
             if ( m_if_record_mvs )
             {
-                // m_mvs_recorder.insert_image_and_pts( img_pose, m_map_rgb_pts.m_voxels_recent_visited );
                 m_mvs_recorder.insert_image_and_pts( img_pose, m_map_rgb_pts.m_pts_last_hitted );
+                // m_mvs_recorder.insert_image_and_pts( img_pose2, m_map_rgb_pts.m_pts_last_hitted );
             }
             g_cost_time_logger.record( tim, "Mvs_record" );
         }
@@ -1436,6 +1437,9 @@ void R3LIVE::service_VIO_update()
         m_mutex_lio_process.unlock();
         // cout << "Solve image pose cost " << tim.toc("Solve_pose") << endl;
         m_map_rgb_pts.update_pose_for_projection( img_pose, -0.4 );
+        m_map_rgb_pts.update_pose_for_projection( img_pose2, -0.4 );
+
+
         op_track.update_and_append_track_pts( img_pose, m_map_rgb_pts, m_track_windows_size / m_vio_scale_factor, 1000000 );
         g_cost_time_logger.record( tim, "Frame" );
         double frame_cost = tim.toc( "Frame" );

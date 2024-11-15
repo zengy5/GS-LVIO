@@ -294,6 +294,7 @@ public:
     std::vector<std::shared_ptr<RGB_pts>> m_last_added_rgb_pts_vec;
     std::string m_map_output_dir;
     std::shared_ptr<std::shared_future<void> > m_render_thread = nullptr;
+    std::shared_ptr<std::shared_future<void> > m_render_thread2 = nullptr;
     int multi_camera_state = 0;
     
     // VIO subsystem related

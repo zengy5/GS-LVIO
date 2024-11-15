@@ -213,6 +213,7 @@ struct Global_map
 
 
 void render_pts_in_voxels_mp( std::shared_ptr< Image_frame > &img_ptr, std::unordered_set< RGB_voxel_ptr > *voxels_for_render, const double &obs_time = 0 );
+void render_pts_in_voxels_mp_multi(std::shared_ptr<Image_frame> &img_ptr,std::shared_ptr<Image_frame> &img_ptr2, std::unordered_set<RGB_voxel_ptr> * _voxels_for_render,  const double & obs_time, const double & obs_time2);
 
 template < typename Archive >
 inline void save( Archive &ar, const Global_map &global_map, const unsigned int /*version*/ )

@@ -448,7 +448,8 @@ void render_pts_in_voxels_mp(std::shared_ptr<Image_frame> &img_ptr, std::unorder
     int numbers_of_voxels = g_voxel_for_render.size();
     g_cost_time_logger.record("Pts_num", numbers_of_voxels);
     render_pts_count= 0 ;
-    if(USING_OPENCV_TBB)
+    // if(USING_OPENCV_TBB)
+    if(0)
     {
         cv::parallel_for_(cv::Range(0, numbers_of_voxels), [&](const cv::Range &r)
                           { thread_render_pts_in_voxel(r.start, r.end, img_ptr, &g_voxel_for_render, obs_time); });
@@ -466,23 +467,63 @@ void render_pts_in_voxels_mp(std::shared_ptr<Image_frame> &img_ptr, std::unorder
             int end = (thr + 1) * numbers_of_voxels / num_of_threads;
             results[thr] = m_thread_pool_ptr->commit_task(thread_render_pts_in_voxel, start, end,  img_ptr, &g_voxel_for_render, obs_time);
         }
-        g_cost_time_logger.record(tim, "Com");
-        tim.tic("wait_Opm");
-        for (int thr = 0; thr < num_of_threads; thr++)
-        {
-            double cost_time = results[thr].get();
-            cost_time_logger_render.record(std::string("T_").append(std::to_string(thr)), cost_time );
-        }
-        g_cost_time_logger.record(tim, "wait_Opm");
-        cost_time_logger_render.record(tim, "wait_Opm");
+        // g_cost_time_logger.record(tim, "Com");
+        // tim.tic("wait_Opm");
+        // for (int thr = 0; thr < num_of_threads; thr++)
+        // {
+        //     double cost_time = results[thr].get();
+        //     cost_time_logger_render.record(std::string("T_").append(std::to_string(thr)), cost_time );
+        // }
+        // g_cost_time_logger.record(tim, "wait_Opm");
+        // cost_time_logger_render.record(tim, "wait_Opm");
     }
     // img_ptr->release_image();
-    cost_time_logger_render.flush_d();
-    g_cost_time_logger.record(tim, "Render_mp");
-    g_cost_time_logger.record("Pts_num_r", render_pts_count);
+    // cost_time_logger_render.flush_d();
+    // g_cost_time_logger.record(tim, "Render_mp");
+    // g_cost_time_logger.record("Pts_num_r", render_pts_count);
     
 }
 
+void render_pts_in_voxels_mp_multi(std::shared_ptr<Image_frame> &img_ptr,std::shared_ptr<Image_frame> &img_ptr2, std::unordered_set<RGB_voxel_ptr> * _voxels_for_render,  const double & obs_time, const double & obs_time2)
+{
+    Common_tools::Timer tim;
+    g_voxel_for_render.clear();
+    for(Voxel_set_iterator it = (*_voxels_for_render).begin(); it != (*_voxels_for_render).end(); it++)
+    {
+        g_voxel_for_render.push_back(*it);
+    }
+    std::vector<std::future<double>> results;
+    tim.tic("Render_mp");
+    int numbers_of_voxels = g_voxel_for_render.size();
+    g_cost_time_logger.record("Pts_num", numbers_of_voxels);
+    render_pts_count= 0 ;
+    // if(USING_OPENCV_TBB)
+    if(0)
+    {
+        cv::parallel_for_(cv::Range(0, numbers_of_voxels), [&](const cv::Range &r)
+                          { thread_render_pts_in_voxel(r.start, r.end, img_ptr, &g_voxel_for_render, obs_time); });
+    }
+    else
+    {
+        int num_of_threads = std::min(8*2, (int)numbers_of_voxels);
+        // results.clear();
+        results.resize(num_of_threads);
+        tim.tic("Com");
+        for (int thr = 0; thr < num_of_threads; thr++)
+        {
+            int start = thr * numbers_of_voxels / num_of_threads;
+            int end = (thr + 1) * numbers_of_voxels / num_of_threads;
+            results[thr] = m_thread_pool_ptr->commit_task(thread_render_pts_in_voxel, start, end,  img_ptr, &g_voxel_for_render, obs_time);
+        }
+        for (int thr = 0; thr < num_of_threads; thr++)
+        {
+            int start = thr * numbers_of_voxels / num_of_threads;
+            int end = (thr + 1) * numbers_of_voxels / num_of_threads;
+            results[thr] = m_thread_pool_ptr->commit_task(thread_render_pts_in_voxel, start, end,  img_ptr2, &g_voxel_for_render, obs_time2);
+        }
+    }
+    
+}
 void Global_map::render_with_a_image(std::shared_ptr<Image_frame> &img_ptr, int if_select)
 {
 
