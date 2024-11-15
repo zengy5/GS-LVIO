@@ -1437,7 +1437,8 @@ void R3LIVE::service_VIO_update()
         m_mutex_lio_process.unlock();
         // cout << "Solve image pose cost " << tim.toc("Solve_pose") << endl;
         m_map_rgb_pts.update_pose_for_projection( img_pose, -0.4 );
-        m_map_rgb_pts.update_pose_for_projection( img_pose2, -0.4 );
+        if(multi_camera_state && img_2_is_available)
+            m_map_rgb_pts.update_pose_for_projection( img_pose2, -0.4 );
 
 
         op_track.update_and_append_track_pts( img_pose, m_map_rgb_pts, m_track_windows_size / m_vio_scale_factor, 1000000 );
