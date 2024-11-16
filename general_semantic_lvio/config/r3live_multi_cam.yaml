@@ -40,7 +40,7 @@ r3live_vio:
         -0.        , -0.93851412,  0.34524104] 
    camera_ext_t: [0.08528735, 0.0304036, -0.04362076] 
 
-   multi_camera_state: 1
+   multi_camera_state: 0
    camera2_intrinsic:
       [607.575 , 0.0,   432.54,
       0.0,    607.335,  243.137,
@@ -52,6 +52,19 @@ r3live_vio:
         -0.5093022 ,  0.02847882, -0.86011692,
         -0.32971664, -0.92964638,  0.1644545 ] 
    camera2_ext_t: [0.08063143, -0.15576051, -0.10504271] 
+
+   thrid_camera_state: 0
+   camera3_intrinsic:
+      [607.575 , 0.0,   432.54,
+      0.0,    607.335,  243.137,
+      0.0, 0.0, 1.0 ] 
+   camera3_dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]  #k1, k2, p1, p2, k3
+   # Fine extrinsic value. Camera2-to-LiDAR1.
+   camera3_ext_R:
+      [0.81803794,  0.3528997,  0.4541758, 
+      -0.4897441,  0.0133030,  0.8717645,  
+      0.30160363,  -0.935567,  0.1837128]  
+   camera3_ext_t: [-0.02181285, 0.09536520, -0.16412097] 
 
 r3live_lio:        
    lio_update_point_step: 4   # Point step used for LIO update.  

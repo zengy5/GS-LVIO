@@ -4,6 +4,7 @@
     <param name="IMU_topic" type="string" value= "/livox/imu_192_168_1_3" />
     <param name="Image_topic" type="string" value= "/camera2/color/image_raw" />
     <param name="Image_topic2" type="string" value= "/camera0/color/image_raw" />
+    <param name="Image_topic3" type="string" value= "/camera1/color/image_raw" />
     <param name="r3live_common/map_output_dir" type="string" value="$(env HOME)/r3live_output" />
     <rosparam command="load" file="$(find r3live)/../config/r3live_multi_cam.yaml" />
 

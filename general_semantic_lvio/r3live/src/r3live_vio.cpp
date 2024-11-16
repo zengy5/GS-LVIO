@@ -258,6 +258,7 @@ void R3LIVE::publish_raw_img( cv::Mat &img )
 int        sub_image_typed = 0; // 0: TBD 1: sub_raw, 2: sub_comp
 std::mutex mutex_image_callback;
 std::mutex mutex_image2_callback;
+std::mutex mutex_image3_callback;
 
 std::deque< sensor_msgs::CompressedImageConstPtr > g_received_compressed_img_msg;
 std::deque< sensor_msgs::ImageConstPtr >           g_received_img_msg;
@@ -366,10 +367,18 @@ void R3LIVE::image_callback( const sensor_msgs::ImageConstPtr &msg )
 
 void R3LIVE::image_callback2( const sensor_msgs::ImageConstPtr &msg )
 {
-    // std::unique_lock< std::mutex > lock( mutex_image2_callback );
-    // // 第二个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
+    std::unique_lock< std::mutex > lock( mutex_image2_callback );
+    // 第二个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
     cv::Mat temp_img = cv_bridge::toCvCopy( msg, sensor_msgs::image_encodings::BGR8 )->image.clone();
     process_image2( temp_img, msg->header.stamp.toSec() );
+}
+
+void R3LIVE::image_callback3( const sensor_msgs::ImageConstPtr &msg )
+{
+    std::unique_lock< std::mutex > lock( mutex_image3_callback );
+    // 第三个图像的已经不需要再启动视觉处理线程了,只需要将图像处理完放进上色队列即可
+    cv::Mat temp_img = cv_bridge::toCvCopy( msg, sensor_msgs::image_encodings::BGR8 )->image.clone();
+    process_image3( temp_img, msg->header.stamp.toSec() );
 }
 
 double last_accept_time = 0;
@@ -377,6 +386,8 @@ int    buffer_max_frame = 0;
 int    total_frame_count = 0;
 int    buffer_max_frame2 = 0;
 int    total_frame_count2 = 0;
+int    buffer_max_frame3 = 0;
+int    total_frame_count3 = 0;
 void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
 {
     cv::Mat img_get;
@@ -396,7 +407,7 @@ void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
     {
         return;
     }
-    // // last_accept_time = msg_time;
+    // last_accept_time = msg_time;
     
     if ( m_camera2_start_ros_tim < 0 )
     {
@@ -444,7 +455,7 @@ void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
     m_queue_image_with_pose2.push_back( img_pose );
     m_camera_data_mutex2.unlock();
     total_frame_count2++;
-    std::cout << m_queue_image_with_pose2.size() << std::endl;
+    // std::cout << m_queue_image_with_pose2.size() << std::endl;
     if ( m_queue_image_with_pose2.size() > buffer_max_frame2 )
     {
         buffer_max_frame2 = m_queue_image_with_pose2.size();
@@ -452,6 +463,80 @@ void   R3LIVE::process_image2( cv::Mat &temp_img, double msg_time )
     
 }
 
+void   R3LIVE::process_image3( cv::Mat &temp_img, double msg_time )
+{
+    cv::Mat img_get;
+    if ( temp_img.rows == 0 )
+    {
+        cout << "Process image error, image rows =0 " << endl;
+        return;
+    }
+
+    if ( msg_time < last_accept_time )
+    {
+        cout << "Error, image time revert!!" << endl;
+        return;
+    }
+
+    if ( ( msg_time - last_accept_time ) < ( 1.0 / m_control_image_freq ) * 0.9 )
+    {
+        return;
+    }
+    // last_accept_time = msg_time;
+    
+    if ( m_camera3_start_ros_tim < 0 )
+    {
+        // 新的图像被用image_pose2来表示
+        // 一切操作都在这个上面做
+        // 也需要初始化,将内参什么的设置好
+        
+        m_camera3_start_ros_tim = msg_time;
+        m_vio_scale_factor = m_vio_image_width * m_image_downsample_ratio / temp_img.cols; // 320 * 24
+        // set_initial_camera_parameter( g_lio_state, m_camera_intrinsic.data(), m_camera_dist_coeffs.data(), m_camera_ext_R.data(),
+                                    //   m_camera_ext_t.data(), m_vio_scale_factor );
+        // 这个不能直接用
+        g_cam3_K << m_camera3_intrinsic.data()[ 0 ] / m_vio_scale_factor, m_camera3_intrinsic.data()[ 1 ],
+                    m_camera3_intrinsic.data()[ 2 ] / m_vio_scale_factor, m_camera3_intrinsic.data()[ 3 ],
+                    m_camera3_intrinsic.data()[ 4 ] / m_vio_scale_factor, m_camera3_intrinsic.data()[ 5 ] / m_vio_scale_factor, 
+                    m_camera3_intrinsic.data()[ 6 ], m_camera3_intrinsic.data()[ 7 ], m_camera3_intrinsic.data()[ 8 ];
+        g_cam3_dist = Eigen::Map< Eigen::Matrix< double, 5, 1 > >( m_camera3_dist_coeffs.data() );
+        cv::eigen2cv( g_cam3_K, intrinsic3 );
+        cv::eigen2cv( g_cam3_dist, dist_coeffs3 );
+        initUndistortRectifyMap( intrinsic3, dist_coeffs3, cv::Mat(), intrinsic3, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ),
+                                 CV_16SC2, m_ud3_map1, m_ud3_map2 );
+    }
+    
+    if ( m_image_downsample_ratio != 1.0 )
+    {
+        cv::resize( temp_img, img_get, cv::Size( m_vio_image_width / m_vio_scale_factor, m_vio_image_heigh / m_vio_scale_factor ) );
+    }
+    else
+    {
+        img_get = temp_img; // clone ?
+    }
+
+    std::shared_ptr< Image_frame > img_pose = std::make_shared< Image_frame >( g_cam3_K );
+    if ( m_if_pub_raw_img )
+    {
+        img_pose->m_raw_img = img_get;
+    }
+    // cv::remap( img_get, img_pose->m_img, m_ud2_map1, m_ud2_map2, cv::INTER_LINEAR );
+    // cv::imshow("sub Img", img_pose->m_img);
+    img_pose->m_img = img_get;
+    img_pose->m_timestamp = msg_time;
+    img_pose->init_cubic_interpolation();
+    img_pose->image_equalize();
+    m_camera_data_mutex3.lock();
+    m_queue_image_with_pose3.push_back( img_pose );
+    m_camera_data_mutex3.unlock();
+    total_frame_count3++;
+    // std::cout << m_queue_image_with_pose3.size() << std::endl;
+    if ( m_queue_image_with_pose3.size() > buffer_max_frame3 )
+    {
+        buffer_max_frame3 = m_queue_image_with_pose3.size();
+    }     
+    
+}
 
 void   R3LIVE::process_image( cv::Mat &temp_img, double msg_time )
 {
@@ -545,6 +630,17 @@ void R3LIVE::load_vio_parameters()
         m_ros_node_handle.getParam( "r3live_vio/camera2_ext_t", camera2_ext_t_data );     
     }
 
+    std::vector< double > camera3_intrinsic_data, camera3_dist_coeffs_data, camera3_ext_R_data, camera3_ext_t_data;
+    m_ros_node_handle.getParam( "r3live_vio/thrid_camera_state", thrid_camera_state );
+    if(thrid_camera_state)
+    {
+        std::cout << "Thrid Cameras Applied!" << std::endl;
+        m_ros_node_handle.getParam( "r3live_vio/camera3_intrinsic", camera3_intrinsic_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera3_dist_coeffs", camera3_dist_coeffs_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera3_ext_R", camera3_ext_R_data );
+        m_ros_node_handle.getParam( "r3live_vio/camera3_ext_t", camera3_ext_t_data );     
+    }
+
     CV_Assert( ( m_vio_image_width != 0 && m_vio_image_heigh != 0 ) );
 
     if ( ( camera_intrinsic_data.size() != 9 ) || ( camera_dist_coeffs_data.size() != 5 ) || ( camera_ext_R_data.size() != 9 ) ||
@@ -583,6 +679,20 @@ void R3LIVE::load_vio_parameters()
         cout << m_camera2_ext_R << endl;
         cout << "[Ros_parameter]: r3live_vio/Camera2 extrinsic T: " << m_camera2_ext_t.transpose() << endl;       
     }
+
+    if(thrid_camera_state)
+    {
+        m_camera3_intrinsic = Eigen::Map< Eigen::Matrix< double, 3, 3, Eigen::RowMajor > >( camera3_intrinsic_data.data() );
+        m_camera3_dist_coeffs = Eigen::Map< Eigen::Matrix< double, 5, 1 > >( camera3_dist_coeffs_data.data() );
+        m_camera3_ext_R = Eigen::Map< Eigen::Matrix< double, 3, 3, Eigen::RowMajor > >( camera3_ext_R_data.data() );
+        m_camera3_ext_t = Eigen::Map< Eigen::Matrix< double, 3, 1 > >( camera3_ext_t_data.data() );
+        cout << "[Ros_parameter]: r3live_vio/Camera3 Intrinsic: " << endl;
+        cout << m_camera3_intrinsic << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera3 distcoeff: " << m_camera3_dist_coeffs.transpose() << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera3 extrinsic R: " << endl;
+        cout << m_camera3_ext_R << endl;
+        cout << "[Ros_parameter]: r3live_vio/Camera3 extrinsic T: " << m_camera3_ext_t.transpose() << endl;       
+    }
     std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 }
 
@@ -617,14 +727,21 @@ void R3LIVE::set_image_pose_with_extrnisic( std::shared_ptr< Image_frame > &imag
     mat_3_3 R_w2c = rot_mat * rot_i2c2;
 
     image_pose->set_pose( eigen_q( R_w2c ), pose_t );
-    // image_pose->fx = state.cam_intrinsic( 0 );
-    // image_pose->fy = state.cam_intrinsic( 1 );
-    // image_pose->cx = state.cam_intrinsic( 2 );
-    // image_pose->cy = state.cam_intrinsic( 3 );
-
-    // image_pose->m_cam_K << image_pose->fx, 0, image_pose->cx, 0, image_pose->fy, image_pose->cy, 0, 0, 1;
-    // scope_color( ANSI_COLOR_CYAN_BOLD );
     std::cout << "\nsecond image processed!" << std::endl;
+
+}
+
+void R3LIVE::set_image_pose_with_extrnisic3( std::shared_ptr< Image_frame > &image_pose, const StatesGroup &state)
+{
+    mat_3_3 rot_mat = state.rot_end;
+    vec_3   t_vec = state.pos_end;
+    Eigen::Matrix3d rot_i2c3 = m_camera3_ext_R;
+    Eigen::Vector3d pos_i2c3 = m_camera3_ext_t;
+    vec_3   pose_t = rot_mat * pos_i2c3 + t_vec;
+    mat_3_3 R_w2c = rot_mat * rot_i2c3;
+
+    image_pose->set_pose( eigen_q( R_w2c ), pose_t );
+    std::cout << "\nthrid image processed!" << std::endl;
 
 }
 void R3LIVE::publish_camera_odom( std::shared_ptr< Image_frame > &image, double msg_time )
@@ -691,6 +808,37 @@ void R3LIVE::publish_camera_odom2( std::shared_ptr< Image_frame > &image, double
     pub_path_cam2.publish( camera_path2 );
 }
 
+void R3LIVE::publish_camera_odom3( std::shared_ptr< Image_frame > &image, double msg_time )
+{
+    eigen_q            odom_q = image->m_pose_w2c_q;
+    vec_3              odom_t = image->m_pose_w2c_t;
+    nav_msgs::Odometry camera_odom;
+    camera_odom.header.frame_id = "world";
+    camera_odom.child_frame_id = "/aft_mapped";
+    camera_odom.header.stamp = ros::Time::now(); // ros::Time().fromSec(last_timestamp_lidar);
+    camera_odom.pose.pose.orientation.x = odom_q.x();
+    camera_odom.pose.pose.orientation.y = odom_q.y();
+    camera_odom.pose.pose.orientation.z = odom_q.z();
+    camera_odom.pose.pose.orientation.w = odom_q.w();
+    camera_odom.pose.pose.position.x = odom_t( 0 );
+    camera_odom.pose.pose.position.y = odom_t( 1 );
+    camera_odom.pose.pose.position.z = odom_t( 2 );
+    pub_odom_cam3.publish( camera_odom );
+
+    geometry_msgs::PoseStamped msg_pose;
+    msg_pose.header.stamp = ros::Time().fromSec( msg_time );
+    msg_pose.header.frame_id = "world";
+    msg_pose.pose.orientation.x = odom_q.x();
+    msg_pose.pose.orientation.y = odom_q.y();
+    msg_pose.pose.orientation.z = odom_q.z();
+    msg_pose.pose.orientation.w = odom_q.w();
+    msg_pose.pose.position.x = odom_t( 0 );
+    msg_pose.pose.position.y = odom_t( 1 );
+    msg_pose.pose.position.z = odom_t( 2 );
+    camera_path3.header.frame_id = "world";
+    camera_path3.poses.push_back( msg_pose );
+    pub_path_cam3.publish( camera_path3 );
+}
 void R3LIVE::publish_track_pts( Rgbmap_tracker &tracker )
 {
     pcl::PointXYZRGB                    temp_point;
@@ -1310,7 +1458,6 @@ void R3LIVE::service_VIO_update()
             {
                 cout << ANSI_COLOR_BLUE_BOLD << "=== Pop image! current queue size = " << m_queue_image_with_pose2.size() << " ===" << ANSI_COLOR_RESET
                     << endl;
-                // op_track.track_img( m_queue_image_with_pose2.front(), -20 );
                 m_queue_image_with_pose2.pop_front();
             }
             img_pose2 = m_queue_image_with_pose2.front();
@@ -1318,6 +1465,25 @@ void R3LIVE::service_VIO_update()
             // double                             message_time = img_pose->m_timestamp;
             m_queue_image_with_pose2.pop_front();
             m_camera_data_mutex2.unlock();
+        }
+
+        std::shared_ptr< Image_frame > img_pose3;
+        bool img_3_is_available = false;
+        if(thrid_camera_state && !m_queue_image_with_pose3.empty())
+        {
+            // std::cout << "Not Empty" << std::endl;
+            m_camera_data_mutex3.lock();
+            while ( m_queue_image_with_pose3.size() > m_maximum_image_buffer )
+            {
+                cout << ANSI_COLOR_BLUE_BOLD << "=== Pop image! current queue size = " << m_queue_image_with_pose3.size() << " ===" << ANSI_COLOR_RESET
+                    << endl;
+                m_queue_image_with_pose3.pop_front();
+            }
+            img_pose3 = m_queue_image_with_pose3.front();
+            img_3_is_available = true;
+            // double                             message_time = img_pose->m_timestamp;
+            m_queue_image_with_pose3.pop_front();
+            m_camera_data_mutex3.unlock();
         }
 
 
@@ -1401,6 +1567,8 @@ void R3LIVE::service_VIO_update()
         set_image_pose( img_pose, state_out );
         if(multi_camera_state && img_2_is_available)
             set_image_pose_with_extrnisic( img_pose2, state_out);
+        if(thrid_camera_state && img_3_is_available)
+            set_image_pose_with_extrnisic3( img_pose3, state_out);
 
         if ( 1 )
         {
@@ -1408,11 +1576,26 @@ void R3LIVE::service_VIO_update()
             if ( 1 ) // Using multiple threads for rendering
             {
                 m_map_rgb_pts.m_if_get_all_pts_in_boxes_using_mp = 0;
-
-                if(multi_camera_state && img_2_is_available)
-                    m_render_thread2 = std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
-                        render_pts_in_voxels_mp_multi, img_pose, img_pose2, 
-                            &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp,img_pose2->m_timestamp ) );
+                if(multi_camera_state && thrid_camera_state)
+                {
+                    if(img_2_is_available && img_3_is_available)
+                        // m_render_thread3 = 
+                        //     std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
+                        //         render_pts_in_voxels_mp_thrid, img_pose, img_pose2, img_pose3, 
+                        //             &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp, img_pose2->m_timestamp, img_pose3->m_timestamp ) ); 
+                    // ! 改成单线程后不再闪退,但是慢了很多
+                    render_pts_in_voxels_mp_thrid(img_pose, img_pose2, img_pose3, 
+                                    &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp, img_pose2->m_timestamp, img_pose3->m_timestamp);
+                }
+   
+                else if(multi_camera_state)
+                {
+                    if(img_2_is_available)
+                        m_render_thread2 = 
+                            std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
+                                render_pts_in_voxels_mp_multi, img_pose, img_pose2, 
+                                    &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp,img_pose2->m_timestamp ) );
+                } 
                 else if(!multi_camera_state) 
                     m_render_thread = std::make_shared< std::shared_future< void > >( m_thread_pool_ptr->commit_task(
                         render_pts_in_voxels_mp, img_pose, &m_map_rgb_pts.m_voxels_recent_visited, img_pose->m_timestamp ) );
@@ -1428,7 +1611,7 @@ void R3LIVE::service_VIO_update()
             if ( m_if_record_mvs )
             {
                 m_mvs_recorder.insert_image_and_pts( img_pose, m_map_rgb_pts.m_pts_last_hitted );
-                // m_mvs_recorder.insert_image_and_pts( img_pose2, m_map_rgb_pts.m_pts_last_hitted );
+
             }
             g_cost_time_logger.record( tim, "Mvs_record" );
         }
@@ -1439,6 +1622,8 @@ void R3LIVE::service_VIO_update()
         m_map_rgb_pts.update_pose_for_projection( img_pose, -0.4 );
         if(multi_camera_state && img_2_is_available)
             m_map_rgb_pts.update_pose_for_projection( img_pose2, -0.4 );
+        if(thrid_camera_state && img_3_is_available)
+            m_map_rgb_pts.update_pose_for_projection( img_pose3, -0.4 );
 
 
         op_track.update_and_append_track_pts( img_pose, m_map_rgb_pts, m_track_windows_size / m_vio_scale_factor, 1000000 );
@@ -1458,6 +1643,8 @@ void R3LIVE::service_VIO_update()
         publish_camera_odom( img_pose, message_time );
         if(multi_camera_state && img_2_is_available)
             publish_camera_odom2( img_pose2, message_time );
+        if(thrid_camera_state && img_3_is_available)
+            publish_camera_odom3( img_pose3, message_time );
         // publish_track_img( op_track.m_debug_track_img, display_cost_time );
         publish_track_img( img_pose->m_raw_img, display_cost_time );
 
